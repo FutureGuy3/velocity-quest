@@ -75,3 +75,61 @@
   max-width: calc(100vw - 32px);
 }
 .empty { padding: 24px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ---- ホーム:目標カード ---- */
+.goal-card {
+  margin: 0 var(--gutter); padding: 16px 18px; border-radius: var(--r-xl);
+  background: var(--accent); color: var(--on-accent);
+  display: flex; flex-direction: column; gap: 10px; text-decoration: none;
+}
+.goal-card .goal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.goal-card .goal-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-card .goal-target { display: flex; align-items: baseline; gap: 8px; }
+.goal-card .goal-target .num { font-size: 52px; line-height: 0.9; }
+.goal-card .goal-target .suffix { font-size: 16px; font-weight: 700; }
+.goal-bar { height: 6px; border-radius: 3px; background: rgba(11, 11, 12, 0.22); overflow: hidden; }
+.goal-bar > div { height: 100%; background: var(--on-accent); border-radius: 3px; }
+.goal-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.goal-stats > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.goal-stats .k { font-size: 11px; font-weight: 500; }
+.goal-stats .v { font-family: var(--font-num); font-weight: 700; font-size: 22px; line-height: 1.1; white-space: nowrap; }
+.goal-stats .d { font-size: 10px; font-weight: 500; opacity: 0.75; }
+.goal-empty {
+  margin: 0 var(--gutter); padding: 16px 18px; border-radius: var(--r-xl);
+  border: 1px dashed var(--line-strong); color: var(--muted); font-size: 13px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+
+/* ---- ホーム:体重 ---- */
+.bw-card {
+  margin: 14px var(--gutter) 0; padding: 14px 16px; border-radius: var(--r-lg);
+  background: var(--card); border: 1px solid var(--line); display: flex; align-items: center; gap: 12px;
+}
+.bw-card .bw-main { display: flex; flex-direction: column; gap: 4px; flex-grow: 1; min-width: 0; }
+.bw-card .bw-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.big-input {
+  width: 96px; background: transparent; border: none; border-bottom: 2px solid var(--accent); border-radius: 0;
+  color: var(--text); font-family: var(--font-num); font-weight: 700; font-size: 32px; padding: 0; outline: none;
+}
+.big-input::placeholder { color: var(--faint); }
+
+/* ---- ホーム:ルーティンと記録中 ---- */
+.routine-row {
+  display: flex; align-items: center; gap: 12px; padding: 14px 14px 14px 16px;
+  border-radius: var(--r-lg); background: var(--card); border: 1px solid var(--line);
+}
+.routine-row .info { display: flex; flex-direction: column; gap: 4px; flex-grow: 1; min-width: 0; color: inherit; min-height: var(--tap); justify-content: center; }
+.routine-row .name { font-size: 15px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.routine-row .meta { font-size: 12px; color: var(--muted); }
+.play-btn {
+  width: 48px; height: 48px; flex-shrink: 0; border-radius: 14px; border: none;
+  background: var(--accent); color: var(--on-accent); display: inline-flex; align-items: center; justify-content: center;
+}
+.active-card {
+  margin: 14px var(--gutter) 0; padding: 14px 16px; border-radius: var(--r-lg);
+  background: #1E1712; border: 1px solid var(--accent); display: flex; flex-direction: column; gap: 10px;
+}
+.active-card .row { display: flex; gap: 8px; }
+.active-card .row .btn { flex: 1; }
+.version-note { text-align: center; color: var(--faint); font-size: 11px; padding: 24px 0 8px; }
+.badge-test { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: var(--warm); color: var(--bg); font-size: 10px; font-weight: 700; vertical-align: middle; }

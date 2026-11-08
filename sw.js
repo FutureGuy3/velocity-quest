@@ -23,6 +23,7 @@ const PRECACHE = [
   './js/ui/dom.js',
   './js/ui/screens/home.js',
   './js/ui/screens/placeholder.js',
+  './js/ui/screens/settings.js',
   './data/exercises.json',
   './vendor/dexie.mjs',
   './icons/icon-192.png',

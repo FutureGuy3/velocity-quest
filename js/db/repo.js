@@ -1,6 +1,9 @@
 // データ層。画面のコードはこのファイルの関数だけを使って読み書きする。
 // 段階3ではここ(特に put / remove)に同期の処理を足す。
-import { openDb, SYNC_TABLES } from './schema.js';
+import { openDb, SYNC_TABLES, IS_PREVIEW } from './schema.js';
+import { setEstimate1RM, trialStats, betterBest } from '../domain/calc.js';
+
+export { IS_PREVIEW };
 
 export const OWNER_LOCAL = 'local';
 const SETTINGS_ID = 'user';
@@ -161,6 +164,15 @@ export function newRoutineItem(ex) {
   return { key: newId(), exerciseId: ex.id, sets: 3, reps: 5, restSec: ex.restSec ?? 90, pap: false };
 }
 
+/** ルーティンごとの「前回」(そのルーティンから始めて完了した最後の日付) */
+export async function getRoutineLastDates() {
+  const out = new Map();
+  for (const w of await listWorkouts()) {
+    if (w.routineId && !out.has(w.routineId)) out.set(w.routineId, w.date);
+  }
+  return out;
+}
+
 /* ===================== 練習(ジム) ===================== */
 
 export async function getActiveWorkout() {
@@ -281,6 +293,62 @@ export async function listGoals() {
 }
 export function getGoal(id) { return getAlive('goals', id); }
 export function saveGoal(g) { return put('goals', g); }
+
+/** ホーム上部に表示する目標(上部表示の印が付いた最初の1つ) */
+export async function getPinnedGoal() {
+  return (await listGoals()).find((g) => g.pinned) || null;
+}
+
+/**
+ * 目標の指標の種類(段階1)
+ *  manual    : 記録からは出さない(水泳タイムなど。段階2でタイム記録から出す)
+ *  trial     : 試技(exerciseId、stat = best | average)
+ *  e1rm      : 種目の推定1RM(exerciseId)
+ *  bodyweight: 体重(「ベスト」ではなく最新の値)
+ */
+export const GOAL_METRICS = {
+  manual: '手入力',
+  trial: '試技',
+  e1rm: '推定1RM',
+  bodyweight: '体重',
+};
+
+/**
+ * 目標のベスト { value, date, source } を返す。
+ * 手で入れたベスト(goal.manualBest)と記録から出した値のうち、良い方。
+ * 体重は最新の値(source = 'latest')。
+ */
+export async function getGoalBest(goal) {
+  const dir = goal.direction === 'lower' ? 'lower' : 'higher';
+  const manual = goal.manualBest && goal.manualBest.value != null
+    ? { value: Number(goal.manualBest.value), date: goal.manualBest.date || null, source: 'manual' } : null;
+  const m = goal.metric || { type: 'manual' };
+  let recorded = null;
+
+  if (m.type === 'bodyweight') {
+    const bw = await getLatestBodyweight();
+    return bw ? { value: bw.kg, date: bw.date, source: 'latest' } : manual;
+  }
+  if (m.type === 'trial' && m.exerciseId) {
+    for (const t of await listTrials(m.exerciseId)) {
+      const st = trialStats(t.attempts);
+      const v = m.stat === 'average' ? st.average : st.best;
+      if (v != null) recorded = betterBest(recorded, { value: v, date: t.date, source: 'record' }, dir);
+    }
+  }
+  if (m.type === 'e1rm' && m.exerciseId) {
+    const ex = await getExercise(m.exerciseId);
+    const sets = await listSetsForExercise(m.exerciseId);
+    const bwCache = new Map();
+    for (const s of sets) {
+      if (s.warmup) continue;
+      if (!bwCache.has(s.date)) bwCache.set(s.date, (await getLatestBodyweight(s.date))?.kg ?? null);
+      const v = setEstimate1RM(ex?.recordType || 'weight_reps', s, bwCache.get(s.date));
+      if (v != null) recorded = betterBest(recorded, { value: v, date: s.date, source: 'record' }, dir);
+    }
+  }
+  return betterBest(manual, recorded, dir);
+}
 export function deleteGoal(id) { return remove('goals', id); }
 
 /* ===================== 設定 ===================== */

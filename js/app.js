@@ -5,6 +5,7 @@ import { route, fallback, startRouter } from './router.js';
 import { h, icon, mount, toast } from './ui/dom.js';
 import { renderHome } from './ui/screens/home.js';
 import { renderPlaceholder } from './ui/screens/placeholder.js';
+import { renderSettings } from './ui/screens/settings.js';
 
 export function applyAccent(color) {
   document.documentElement.style.setProperty('--accent', color);
@@ -30,7 +31,11 @@ function registerRoutes() {
   route('/metrics', () => renderPlaceholder('指標と目標', 'metrics'));
   route('/history', () => renderPlaceholder('履歴', 'history'));
   route('/history/:id', () => renderPlaceholder('練習の詳細', null));
-  route('/settings', () => renderPlaceholder('設定', null));
+  route('/settings', () => renderSettings());
+  route('/routine/new', () => renderPlaceholder('ルーティンを作る', null));
+  route('/routine/:id', () => renderPlaceholder('ルーティンの編集', null));
+  route('/goal/new', () => renderPlaceholder('目標を作る', null));
+  route('/goal/:id', () => renderPlaceholder('目標の編集', null));
   fallback(() => renderPlaceholder('ページが見つかりません', null));
 }
 
