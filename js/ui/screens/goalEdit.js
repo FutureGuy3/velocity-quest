@@ -1,7 +1,7 @@
 // 目標の作成・編集
 import { h, icon, mount, toast } from '../dom.js';
 import {
-  getGoal, saveGoal, deleteGoal, listGoals, listExercises, getExerciseMap, localDate,
+  getGoal, saveGoal, deleteGoal, listExercises, getExerciseMap, localDate,
 } from '../../db/repo.js';
 import { parseNumber } from '../../domain/calc.js';
 import { BODY_PARTS } from '../../domain/recordTypes.js';
@@ -32,7 +32,6 @@ export async function renderGoalEdit({ params }) {
     const ex = exMap.get(existing.metric.exerciseId);
     if (ex && E1RM_TYPES.includes(ex.recordType)) e1rmExercises.push(ex);
   }
-  const hasPinned = (await listGoals()).some((g) => g.pinned);
 
   // 画面の状態(入力中は文字のまま持ち、保存時に数値へ直す)
   const st = existing ? {
@@ -50,7 +49,7 @@ export async function renderGoalEdit({ params }) {
   } : {
     title: '', metricType: 'manual', exerciseId: '', stat: 'best',
     target: '', unit: '秒', direction: 'lower', deadline: '', bestValue: '', bestDate: '',
-    pinned: !hasPinned,
+    pinned: true,
   };
 
   function setMetric(type) {
@@ -214,9 +213,7 @@ export async function renderGoalEdit({ params }) {
         h('span', { class: 'switch' },
           h('input', { type: 'checkbox', checked: st.pinned, onchange: (e) => { st.pinned = e.target.checked; } }),
           h('span', {}))),
-      st.pinned && hasPinned && !existing?.pinned
-        ? h('p', { class: 'hint', style: { marginTop: '-10px' } }, '今上部に出ている目標と入れ替わります。')
-        : null,
+      h('p', { class: 'hint', style: { marginTop: '-10px' } }, '上部に表示する目標が複数あるときは、ホームで左右にスワイプして切り替えます。'),
 
       h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, isNew ? '目標を作る' : '保存'),
       !isNew ? h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: onDelete }, 'この目標を削除') : null,

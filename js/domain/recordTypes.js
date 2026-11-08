@@ -40,3 +40,13 @@ export const REST_PRESETS = [
   { label: '任意', sec: null },
 ];
 export const PAP_REST_SEC = 180;
+
+/** ルーティンの「予定の回数」の単位(記録の型ごと) */
+export function planUnit(recordType) {
+  switch (recordType) {
+    case 'time': return '秒';
+    case 'distance_band': return 'm';
+    case 'trials': return '本';
+    default: return '回';
+  }
+}

@@ -30,6 +30,7 @@ const PATHS = {
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   back: '<path d="m15 18-6-6 6-6"/>',
+  forward: '<path d="m9 18 6-6-6-6"/>',
   play: '<path d="M7 4.5v15a1 1 0 0 0 1.52.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 7 4.5z" fill="currentColor" stroke="none"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
@@ -58,9 +59,18 @@ export function icon(name, size = 20, strokeWidth = 2) {
   return svg;
 }
 
+let cleanups = [];
+/** 次に画面を差し替えるときに実行する後片付け(タイマーの停止など) */
+export function onUnmount(fn) { cleanups.push(fn); }
+
 /** 画面を差し替える。showNav=false でサブ画面(下部ナビを隠す) */
-export function mount(node, { showNav = true, navKey = null, keepScroll = false } = {}) {
+/** redraw = true は同じ画面の描き直し(後片付けをしない) */
+export function mount(node, { showNav = true, navKey = null, keepScroll = false, redraw = false } = {}) {
   const y = window.scrollY;
+  if (!redraw) {
+    const pending = cleanups; cleanups = [];
+    for (const fn of pending) { try { fn(); } catch (e) { console.error(e); } }
+  }
   const app = document.getElementById('app');
   app.replaceChildren(node);
   const nav = document.getElementById('nav');
@@ -93,4 +103,21 @@ export function formatDateJa(date) {
 export function formatDateShort(date) {
   const [, m, d] = date.split('-').map(Number);
   return `${m}/${d}`;
+}
+
+/** 顔の5段階(1=とてもきつい … 5=とても良い。null は未入力) */
+const MOUTHS = ['M8 16.5q4-3 8 0', 'M8 16q4-1.5 8 0', 'M8.5 15.5h7', 'M8 14.5q4 2 8 0', 'M7.5 14q4.5 4 9 0'];
+export function faceIcon(level, size = 26) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('width', size); svg.setAttribute('height', size); svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '1.8');
+  svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('aria-hidden', 'true');
+  const mouth = level ? MOUTHS[level - 1] : 'M8.5 15.5h7';
+  svg.innerHTML = `<circle cx="12" cy="12" r="9.5"/><circle cx="9" cy="10" r="0.6" fill="currentColor"/><circle cx="15" cy="10" r="0.6" fill="currentColor"/><path d="${mouth}"/>`;
+  return svg;
+}
+
+/** テーマの色(アクセント)を変える */
+export function applyAccent(color) {
+  document.documentElement.style.setProperty('--accent', color);
 }

@@ -2,17 +2,16 @@
 import { initRepo, getSettings, getActiveWorkout } from './db/repo.js';
 import { seedIfNeeded } from './db/seed.js';
 import { route, fallback, startRouter } from './router.js';
-import { h, icon, mount, toast } from './ui/dom.js';
+import { h, icon, mount, toast, applyAccent } from './ui/dom.js';
 import { renderHome } from './ui/screens/home.js';
 import { renderPlaceholder } from './ui/screens/placeholder.js';
 import { renderSettings } from './ui/screens/settings.js';
 import { renderGoalEdit } from './ui/screens/goalEdit.js';
 import { renderMetrics } from './ui/screens/metrics.js';
-
-export function applyAccent(color) {
-  document.documentElement.style.setProperty('--accent', color);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0B0B0C');
-}
+import { renderRoutineEdit } from './ui/screens/routineEdit.js';
+import { renderWorkoutStart, renderWorkout } from './ui/screens/workout.js';
+import { renderHistory, renderHistoryDetail } from './ui/screens/history.js';
+import { renderTrialEdit } from './ui/screens/trialEdit.js';
 
 function buildNav() {
   const nav = document.getElementById('nav');
@@ -28,14 +27,16 @@ function buildNav() {
 
 function registerRoutes() {
   route('/home', () => renderHome());
-  route('/workout', () => renderPlaceholder('トレーニング', 'workout'));
-  route('/workout/:id', () => renderPlaceholder('トレーニング記録', null));
+  route('/workout', () => renderWorkoutStart());
+  route('/workout/:id', (r) => renderWorkout(r));
   route('/metrics', () => renderMetrics());
-  route('/history', () => renderPlaceholder('履歴', 'history'));
-  route('/history/:id', () => renderPlaceholder('練習の詳細', null));
+  route('/history', () => renderHistory());
+  route('/history/:id', (r) => renderHistoryDetail(r));
   route('/settings', () => renderSettings());
-  route('/routine/new', () => renderPlaceholder('ルーティンを作る', null));
-  route('/routine/:id', () => renderPlaceholder('ルーティンの編集', null));
+  route('/routine/new', (r) => renderRoutineEdit(r));
+  route('/routine/:id', (r) => renderRoutineEdit(r));
+  route('/trial/new', (r) => renderTrialEdit(r));
+  route('/trial/:id', (r) => renderTrialEdit(r));
   route('/goal/new', (r) => renderGoalEdit(r));
   route('/goal/:id', (r) => renderGoalEdit(r));
   fallback(() => renderPlaceholder('ページが見つかりません', null));

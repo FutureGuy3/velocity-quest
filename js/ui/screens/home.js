@@ -2,7 +2,7 @@
 import { h, icon, mount, toast, formatDateJa, formatDateShort } from '../dom.js';
 import {
   localDate, IS_PREVIEW,
-  getPinnedGoal, getGoalBest,
+  getPinnedGoals, getGoalBest,
   getBodyweightOn, getLatestBodyweight, saveBodyweight,
   listRoutines, getRoutineLastDates,
   getActiveWorkout, startWorkout, deleteWorkout,
@@ -12,11 +12,11 @@ import { navigate } from '../../router.js';
 
 export async function renderHome() {
   const today = localDate();
-  const [goal, active, routines, lastDates, todayBw, latestBw] = await Promise.all([
-    getPinnedGoal(), getActiveWorkout(), listRoutines(), getRoutineLastDates(),
+  const [goals, active, routines, lastDates, todayBw, latestBw] = await Promise.all([
+    getPinnedGoals(), getActiveWorkout(), listRoutines(), getRoutineLastDates(),
     getBodyweightOn(today), getLatestBodyweight(),
   ]);
-  const goalBest = goal ? await getGoalBest(goal) : null;
+  const bests = await Promise.all(goals.map((g) => getGoalBest(g)));
 
   mount(h('div', {},
     h('header', { class: 'topbar' },
@@ -25,7 +25,7 @@ export async function renderHome() {
         h('span', { class: 'topbar-sub' }, formatDateJa(today))),
       h('button', { class: 'icon-btn', 'aria-label': '設定', onclick: () => navigate('/settings') }, icon('settings'))),
 
-    goal ? goalCard(goal, goalBest, today) : goalEmpty(),
+    goals.length ? goalCarousel(goals, bests, today) : goalEmpty(),
     bodyweightCard(today, todayBw, latestBw),
     active ? activeCard(active) : null,
 
@@ -43,6 +43,37 @@ export async function renderHome() {
 }
 
 /* ---------- 目標 ---------- */
+
+const GOAL_INDEX_KEY = 'vq.home.goalIndex';
+
+/** 上部に表示する目標を横に並べ、左右のスワイプで切り替える */
+function goalCarousel(goals, bests, today) {
+  const track = h('div', { class: 'goal-track', role: 'group', 'aria-label': '目標(左右にスワイプで切り替え)' },
+    goals.map((g, i) => h('div', { class: 'goal-slide', 'aria-roledescription': 'スライド', 'aria-label': `${i + 1} / ${goals.length}` },
+      goalCard(g, bests[i], today))));
+  if (goals.length === 1) return h('div', { class: 'goal-carousel' }, track);
+
+  const dots = goals.map(() => h('span', { class: 'goal-dot' }, h('span', {})));
+  const setActive = (i) => dots.forEach((d, j) => d.setAttribute('aria-current', String(i === j)));
+
+  let raf = 0;
+  track.addEventListener('scroll', () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+      setActive(i);
+      try { sessionStorage.setItem(GOAL_INDEX_KEY, String(i)); } catch { /* 何もしない */ }
+    });
+  }, { passive: true });
+
+  // 前に見ていた目標を表示する
+  let start = 0;
+  try { start = Math.min(goals.length - 1, Number(sessionStorage.getItem(GOAL_INDEX_KEY)) || 0); } catch { /* 何もしない */ }
+  setActive(start);
+  requestAnimationFrame(() => { track.scrollLeft = start * track.clientWidth; });
+
+  return h('div', { class: 'goal-carousel' }, track, h('div', { class: 'goal-dots', 'aria-hidden': 'true' }, dots));
+}
 
 function goalCard(goal, best, today) {
   const t = goalTexts(goal, best, today);

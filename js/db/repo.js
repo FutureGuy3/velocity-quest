@@ -1,7 +1,7 @@
 // データ層。画面のコードはこのファイルの関数だけを使って読み書きする。
 // 段階3ではここ(特に put / remove)に同期の処理を足す。
 import { openDb, SYNC_TABLES, IS_PREVIEW } from './schema.js';
-import { setEstimate1RM, trialStats, betterBest } from '../domain/calc.js';
+import { setEstimate1RM, trialStats, betterBest, bestSet } from '../domain/calc.js';
 
 export { IS_PREVIEW };
 
@@ -180,39 +180,167 @@ export async function getActiveWorkout() {
   return rows.filter(alive).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0] || null;
 }
 
-/** ルーティンから(またはルーティンなしで)開始。ルーティンはコピーして使う */
+/** セットの値の項目(前回の値を引き継ぐときに使う) */
+export const SET_VALUE_FIELDS = ['weight', 'added', 'assist', 'reps', 'seconds', 'heightCm', 'contacts', 'distance', 'band'];
+
+function pickValues(src) {
+  const out = {};
+  if (!src) return out;
+  for (const f of SET_VALUE_FIELDS) if (src[f] != null && src[f] !== '') out[f] = src[f];
+  if (src.left) out.left = { ...src.left };
+  if (src.right) out.right = { ...src.right };
+  return out;
+}
+
+/** 新しいセットの元になる値を作る(前回の同じ順番の本番セットの値+予定の回数) */
+async function plannedSets(workout, item, count, startOrder) {
+  const last = (await getLastSets(item.exerciseId, { excludeWorkoutId: workout.id })).filter((x) => !x.warmup);
+  const lastMode = last[0]?.sideMode;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const prev = last[i] || last[last.length - 1] || null;
+    const vals = pickValues(prev);
+    if (item.reps != null && item.planned) {
+      if (vals.left) vals.left.reps = item.reps;
+      if (vals.right) vals.right.reps = item.reps;
+      if (['time'].includes(item.recordType)) vals.seconds = item.reps;
+      else if (item.recordType === 'distance_band') vals.distance = item.reps;
+      else vals.reps = item.reps;
+    }
+    out.push({
+      workoutId: workout.id, itemKey: item.key, exerciseId: item.exerciseId, date: workout.date,
+      order: startOrder + i, warmup: false, sideMode: item.sideMode || lastMode || 'both',
+      ...vals, face: null, memo: '', done: false,
+    });
+  }
+  return out;
+}
+
+/** ルーティンから(またはルーティンなしで)開始。ルーティンはコピーして使い、予定のセットを用意する */
 export async function startWorkout({ routineId = null } = {}) {
   const today = localDate();
   let items = [];
   let title = 'フリー';
+  let routine = null;
   if (routineId) {
-    const r = await getRoutine(routineId);
-    if (r) {
-      title = r.name;
-      items = r.items.map((it) => ({ ...it, key: newId(), fromRoutineKey: it.key, sideMode: 'both' }));
+    routine = await getRoutine(routineId);
+    if (routine) {
+      title = routine.name;
+      items = routine.items.map((it) => ({ ...it, key: newId(), fromRoutineKey: it.key, sideMode: null }));
     }
   }
-  const bw = await getBodyweightOn(today);
-  return put('workouts', {
+  const bw = await getLatestBodyweight(today);
+  const w = await put('workouts', {
     date: today,
     startedAt: nowIso(),
     endedAt: null,
     status: 'active',
-    routineId,
+    routineId: routine ? routine.id : null,
     title,
     bodyweight: bw ? bw.kg : null,
     memo: '',
     items,
+    timer: null,
   });
+  const exMap = await getExerciseMap();
+  let order = 1;
+  for (const it of items) {
+    const ex = exMap.get(it.exerciseId);
+    if (!ex || ex.recordType === 'trials') continue;
+    const last = await getLastSets(it.exerciseId, { excludeWorkoutId: w.id });
+    const sideMode = last[0]?.sideMode || 'both';
+    it.sideMode = sideMode;
+    const sets = await plannedSets(w, { ...it, sideMode, planned: true, recordType: ex.recordType }, it.sets || 1, order);
+    order += sets.length;
+    for (const st of sets) await put('sets', st);
+  }
+  return put('workouts', { ...w, items });
+}
+
+/** 記録中(または過去)の練習に種目を足す。各種目に1セット用意する */
+export async function addWorkoutItems(workoutId, exerciseIds) {
+  const w = await getWorkout(workoutId);
+  if (!w) return null;
+  const exMap = await getExerciseMap();
+  const sets = await listSets(workoutId);
+  let order = sets.reduce((m, x) => Math.max(m, x.order ?? 0), 0) + 1;
+  const items = [...w.items];
+  for (const id of exerciseIds) {
+    const ex = exMap.get(id);
+    if (!ex) continue;
+    const last = await getLastSets(id, { excludeWorkoutId: w.id });
+    const item = { key: newId(), exerciseId: id, sets: 1, reps: null, restSec: ex.restSec ?? 90, pap: false, sideMode: last[0]?.sideMode || 'both' };
+    items.push(item);
+    if (ex.recordType === 'trials') continue;
+    for (const st of await plannedSets(w, { ...item, recordType: ex.recordType }, 1, order)) { await put('sets', st); order++; }
+  }
+  return put('workouts', { ...w, items });
+}
+
+/** セットを1つ足す(直前のセットの値を引き継ぐ) */
+export async function addSet(workout, item, { warmup = false } = {}) {
+  const sets = (await listSets(workout.id));
+  const mine = sets.filter((x) => x.itemKey === item.key);
+  const prev = mine[mine.length - 1] || null;
+  const order = (prev ? prev.order : sets.reduce((m, x) => Math.max(m, x.order ?? 0), 0)) + 0.001;
+  return put('sets', {
+    workoutId: workout.id, itemKey: item.key, exerciseId: item.exerciseId, date: workout.date,
+    order, warmup, sideMode: item.sideMode || 'both', ...pickValues(prev), face: null, memo: '', done: false,
+  });
+}
+
+/** 種目を練習から外す(その種目のセットと試技も論理削除) */
+export async function removeWorkoutItem(workout, itemKey) {
+  for (const x of (await listSets(workout.id)).filter((x) => x.itemKey === itemKey)) await remove('sets', x.id);
+  for (const t of (await db.trials.where('workoutId').equals(workout.id).toArray()).filter((t) => alive(t) && t.itemKey === itemKey)) await remove('trials', t.id);
+  return put('workouts', { ...workout, items: workout.items.filter((it) => it.key !== itemKey) });
+}
+
+/** 練習の中の試技(種目ごとに1件) */
+export async function getWorkoutTrial(workoutId, itemKey) {
+  const rows = await db.trials.where('workoutId').equals(workoutId).toArray();
+  return rows.find((t) => alive(t) && t.itemKey === itemKey) || null;
+}
+
+/**
+ * 練習の内容がルーティンと違うか(種目の並び・PAP・休憩・予定)
+ */
+export async function workoutDiffersFromRoutine(workout) {
+  if (!workout.routineId) return false;
+  const r = await getRoutine(workout.routineId);
+  if (!r) return false;
+  const a = r.items.map((it) => `${it.exerciseId}|${!!it.pap}|${it.restSec}`).join(',');
+  const b = workout.items.map((it) => `${it.exerciseId}|${!!it.pap}|${it.restSec}`).join(',');
+  return a !== b;
+}
+
+/** 練習の種目の並び・PAP・休憩をルーティンに反映する(予定のセット×回数は元のルーティンの値を残す) */
+export async function applyWorkoutToRoutine(workout) {
+  const r = await getRoutine(workout.routineId);
+  if (!r) return null;
+  const byKey = new Map(r.items.map((it) => [it.key, it]));
+  const sets = await listSets(workout.id);
+  const items = workout.items.map((it) => {
+    const orig = it.fromRoutineKey ? byKey.get(it.fromRoutineKey) : null;
+    if (orig) return { ...orig, restSec: it.restSec, pap: !!it.pap };
+    const mine = sets.filter((x) => x.itemKey === it.key && !x.warmup && x.done);
+    return {
+      key: newId(), exerciseId: it.exerciseId, sets: Math.max(1, mine.length || 1),
+      reps: mine[mine.length - 1]?.reps ?? 5, restSec: it.restSec, pap: !!it.pap,
+    };
+  });
+  return put('routines', { ...r, items });
 }
 
 export function getWorkout(id) { return getAlive('workouts', id); }
 export function saveWorkout(w) { return put('workouts', w); }
 
+/** 終了。完了にしていないセットは記録に残さない(論理削除) */
 export async function finishWorkout(id) {
   const w = await db.workouts.get(id);
   if (!w) return null;
-  return put('workouts', { ...w, status: 'done', endedAt: nowIso() });
+  for (const x of await listSets(id)) if (!x.done) await remove('sets', x.id);
+  return put('workouts', { ...w, status: 'done', endedAt: w.endedAt || nowIso(), timer: null });
 }
 
 export async function deleteWorkout(id) {
@@ -254,6 +382,15 @@ export async function getLastSets(exerciseId, { excludeWorkoutId = null } = {}) 
   return rows.filter((s) => s.workoutId === wid).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
+/** 自己ベストのセット(ウォームアップ除外。体重はその日の値か直近の値) */
+export async function getBestSet(exerciseId, recordType, { excludeWorkoutId = null } = {}) {
+  const sets = (await listSetsForExercise(exerciseId)).filter((x) => x.workoutId !== excludeWorkoutId);
+  if (!sets.length) return null;
+  const bws = await listBodyweights();
+  const bwOn = (date) => { let v = null; for (const b of bws) { if (b.date <= date) v = b.kg; else break; } return v; };
+  return bestSet(recordType, sets, (x) => bwOn(x.date));
+}
+
 /* ===================== 体重 ===================== */
 
 /** 同じ日は上書き(1日1件) */
@@ -289,23 +426,14 @@ export function deleteTrial(id) { return remove('trials', id); }
 /* ===================== 目標 ===================== */
 
 export async function listGoals() {
-  return (await db.goals.toArray()).filter(alive).sort((a, b) => (b.pinned === true) - (a.pinned === true) || a.createdAt.localeCompare(b.createdAt));
+  return (await db.goals.toArray()).filter(alive).sort((a, b) => (b.pinned === true) - (a.pinned === true) || (a.order ?? 0) - (b.order ?? 0) || a.createdAt.localeCompare(b.createdAt));
 }
 export function getGoal(id) { return getAlive('goals', id); }
-/** 保存。上部に表示する目標は1つだけなので、pinned にしたら他の目標の pinned を外す */
-export async function saveGoal(g) {
-  const saved = await put('goals', g);
-  if (saved.pinned) {
-    for (const other of await listGoals()) {
-      if (other.id !== saved.id && other.pinned) await put('goals', { ...other, pinned: false });
-    }
-  }
-  return saved;
-}
+export function saveGoal(g) { return put('goals', g); }
 
-/** ホーム上部に表示する目標(上部表示の印が付いた最初の1つ) */
-export async function getPinnedGoal() {
-  return (await listGoals()).find((g) => g.pinned) || null;
+/** ホーム上部に表示する目標(複数可。左右のスワイプで切り替える) */
+export async function getPinnedGoals() {
+  return (await listGoals()).filter((g) => g.pinned);
 }
 
 /**
