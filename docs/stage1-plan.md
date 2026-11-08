@@ -1,6 +1,6 @@
 # 段階1 実装計画(案)
 
-2026-11-08 作成。依頼者の確認待ち。確定した点はこのファイルを更新する。
+2026-11-08 作成。確定した点は「6. 確定事項」に記録する。
 
 ## 1. 作るファイル
 
@@ -46,7 +46,7 @@ IndexedDB は真偽値をインデックスにできないため、`deleted` で
 | sets | `id, updatedAt, workoutId, [exerciseId+date]` | workoutId, itemKey, exerciseId, date, order, warmup, sideMode, breakdown{bar, platePerSide, added, assist}, weight, reps, left{weight,reps}, right{weight,reps}, seconds, distance, heightCm, contacts, band, rpeFace(1〜5), memo, done |
 | bodyweights | `id, updatedAt, date` | date, kg(同じ日は上書き) |
 | trials(試技) | `id, updatedAt, [exerciseId+date], workoutId` | exerciseId(立ち幅跳び等), date, attempts[{value, foul}], memo |
-| goals | `id, updatedAt` | title, metric{type, exerciseId, stat}, target, direction(higher/lower), deadline, pinned, manualBest |
+| goals | `id, updatedAt` | title, metric{type, exerciseId, stat}, target, direction(higher/lower), deadline, pinned |
 | settings | `id` | id="user" の1件。unit, accent など(同期対象) |
 | meta | `key` | 端末だけの情報:deviceId, seedVersion。**同期・書き出しの対象外** |
 
@@ -114,3 +114,14 @@ IndexedDB は真偽値をインデックスにできないため、`deleted` で
 - 練習の日付は端末の現地時間で YYYY-MM-DD。
 - JSON 読み込みは「統合」(同じ id は updatedAt が新しい方を残す=段階3の同期と同じ規則)。全消去して置き換える方式も確認つきで用意する。
 - 段階1に入れない:調子の確認(垂直跳びが5%低い日の提案)、強度の段階、計測方法の初期値。
+
+## 6. 確定事項(2026-11-08 依頼者の回答)
+
+- **目標は「出したい値の宣言」**。目標値と期限だけで成り立ち、記録の有無とは無関係。ベスト・あと何秒は、記録から出せるときだけ添える(水泳タイムは段階2までは「記録なし」と表示)。ベストの手入力欄は作らない。
+- **PAP の使い方**:例)加重懸垂。アップ → 重く3回 → 3分休憩 → 重く3回 → 3分休憩 → 重く3回 → 3分休憩 → 自重懸垂を爆発的に1セット。
+  - 重い種目の休憩の初期値を3分にし、タイマーの表示を「PAP」にする。
+  - ペアは「重い種目 → 爆発的な種目」を結ぶ。重い種目の最後のセットを完了すると、3分タイマーに「次:自重懸垂」と出し、その種目へ画面を送る。
+  - 爆発的な種目の予定は1セットが基本(ルーティンで変えられる)。
+- **単位**:kg に固定し、設定に単位の項目は置かない(国内のジムは kg。lb は換算で端数が出るため)。跳躍は種目データどおり立ち幅跳び m、垂直跳び cm。
+- **最初から入っている種目の id**:exercises.json の id をそのまま使う(どの端末でも同じ id になり、同期で二重にならない)。自分で登録した種目は UUID。
+- **作る順番**:履歴 → 指標(目標・試技)→ 設定。
