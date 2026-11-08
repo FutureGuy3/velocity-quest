@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>種目を選ぶ</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&amp;family=Noto+Sans+JP:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;background:#0B0B0C}
+a{color:#FF8A4C}a:hover{color:#FFB08A}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; background: #0B0B0C; color: #F4F4F5; font-family: 'Noto Sans JP', sans-serif">
+
+<header style="display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px">
+<a href="Main.dc.html" aria-label="閉じる" style="width: 44px; height: 44px; border-radius: 12px; background: #161618; color: #F4F4F5; display: flex; align-items: center; justify-content: center; text-decoration: none">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+</a>
+<div style="display: flex; flex-direction: column; flex-grow: 1">
+<span style="font-size: 12px; color: #A1A1AA">ルーティン「下半身・パワー」</span>
+<span style="font-size: 17px; font-weight: 700">種目を選ぶ</span>
+</div>
+</header>
+
+<div style="padding: 0 16px">
+<label for="q" style="position: absolute; left: -9999px">種目を検索</label>
+<div style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 12px; background: #161618; border: 1px solid #2A2A2E">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A1A1AA" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+<input id="q" placeholder="種目名で検索" style="flex-grow: 1; background: transparent; border: none; outline: none; color: #F4F4F5; font-family: 'Noto Sans JP', sans-serif; font-size: 14px">
+</div>
+</div>
+
+<nav aria-label="部位" style="display: flex; gap: 18px; padding: 14px 16px 0; border-bottom: 1px solid #1F1F23; overflow: hidden">
+<sc-for list="{{parts}}" as="p" hint-placeholder-count="8">
+<button style="{{p.style}}">{{p.label}}</button>
+</sc-for>
+</nav>
+
+<div style="display: flex; gap: 6px; padding: 12px 16px; flex-wrap: wrap">
+<sc-for list="{{equip}}" as="e" hint-placeholder-count="8">
+<button style="{{e.style}}">{{e.label}}</button>
+</sc-for>
+</div>
+
+<ul style="list-style: none; margin: 0; padding: 0 16px; display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{items}}" as="it" hint-placeholder-count="8">
+<li style="{{it.rowStyle}}">
+<div style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1; min-width: 0">
+<span style="font-size: 14px; font-weight: 700">{{it.name}}</span>
+<div style="display: flex; gap: 6px; flex-wrap: wrap">
+<span style="font-size: 11px; color: #A1A1AA">{{it.meta}}</span>
+<sc-if value="{{it.uni}}" hint-placeholder-val="{{ false }}">
+<span style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: #26262A; color: #D4D4D8">片側可</span>
+</sc-if>
+</div>
+</div>
+<button aria-label="{{it.aria}}" style="{{it.checkStyle}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{it.icon}}"></path></svg>
+</button>
+</li>
+</sc-for>
+</ul>
+
+<div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px 28px; background: #111113; border-top: 1px solid #222226; display: flex; flex-direction: column; gap: 10px">
+<button style="height: 40px; border-radius: 12px; border: 1px dashed #3A3A40; background: transparent; color: #D4D4D8; font-family: 'Noto Sans JP', sans-serif; font-size: 13px; cursor: pointer">+ 自分で種目を登録</button>
+<a href="Workout.dc.html" style="height: 52px; border-radius: 14px; background: {{accent}}; color: #0B0B0C; display: flex; align-items: center; justify-content: center; text-decoration: none; font-weight: 700; font-size: 15px">3種目を追加</a>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#FF6A1A","options":["#FF6A1A","#FFB020","#3DDC97","#4DA3FF"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+var accent = this.props.accent ?? '#FF6A1A';
+var parts = ['胸', '背中', '肩', '腕', '脚', '臀部', '体幹', 'プライオ'].map(function (l) {
+var on = l === '脚';
+return { label: l, style: 'flex-shrink: 0; height: 40px; padding: 0 0 8px; border: none; background: transparent; font-family: Noto Sans JP, sans-serif; font-size: 14px; cursor: pointer; ' +
+(on ? 'color: #F4F4F5; font-weight: 700; border-bottom: 3px solid ' + accent + ';' : 'color: #A1A1AA; border-bottom: 3px solid transparent;') };
+});
+var equip = ['すべて', 'スミス', 'バーベル', 'ダンベル', 'ケーブル', 'マシン', 'ケトルベル', '自重'].map(function (l) {
+var on = l === 'すべて';
+return { label: l, style: 'height: 32px; padding: 0 12px; border-radius: 16px; font-family: Noto Sans JP, sans-serif; font-size: 12px; cursor: pointer; ' +
+(on ? 'border: none; background: #F4F4F5; color: #0B0B0C; font-weight: 700;' : 'border: 1px solid #2A2A2E; background: #161618; color: #D4D4D8;') };
+});
+var raw = [
+{ name: 'スミス・スクワット', meta: 'スミス · 重量×回数', sel: true },
+{ name: 'バーベル・ジャンプスクワット', meta: 'バーベル · 重量×回数', sel: true },
+{ name: 'スミス・ルーマニアンデッドリフト', meta: 'スミス · 重量×回数' },
+{ name: 'スミス・ブルガリアンスクワット', meta: 'スミス · 重量×回数', uni: true, sel: true },
+{ name: 'レッグプレス', meta: 'マシン · 重量×回数', uni: true },
+{ name: 'レッグエクステンション', meta: 'マシン · 重量×回数', uni: true },
+{ name: 'スパニッシュ・スクワット', meta: '自重 · 回数のみ' },
+{ name: 'スプリットスクワット', meta: 'ダンベル · 重量×回数', uni: true }
+];
+var items = raw.map(function (r) {
+return {
+name: r.name, meta: r.meta, uni: !!r.uni,
+aria: r.sel ? r.name + 'を選択解除' : r.name + 'を選択',
+icon: r.sel ? 'm5 12 5 5 9-10' : 'M12 5v14M5 12h14',
+rowStyle: 'display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 14px; border-radius: 14px; ' +
+(r.sel ? 'background: #1E1712; border: 1px solid ' + accent + ';' : 'background: #161618; border: 1px solid #2A2A2E;'),
+checkStyle: 'width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; ' +
+(r.sel ? 'border: none; background: ' + accent + '; color: #0B0B0C;' : 'border: 1px solid #3A3A40; background: transparent; color: #D4D4D8;')
+};
+});
+return { accent: accent, parts: parts, equip: equip, items: items };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>タイム入力</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&amp;family=Noto+Sans+JP:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;background:#0B0B0C}
+a{color:#FF8A4C}a:hover{color:#FFB08A}
+</style>
+</helmet>
+<div style="width: 390px; min-height: 1180px; box-sizing: border-box; background: #0B0B0C; color: #F4F4F5; font-family: 'Noto Sans JP', sans-serif; padding-bottom: 28px">
+
+<header style="display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px">
+<a href="Metrics.dc.html" aria-label="戻る" style="width: 44px; height: 44px; border-radius: 12px; background: #161618; color: #F4F4F5; display: flex; align-items: center; justify-content: center; text-decoration: none">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+</a>
+<div style="display: flex; flex-direction: column; flex-grow: 1">
+<span style="font-size: 12px; color: #A1A1AA">プール練習 · 11月8日</span>
+<span style="font-size: 17px; font-weight: 700">タイム入力</span>
+</div>
+</header>
+
+<section aria-label="計測の条件" style="margin: 0 16px; padding: 14px; border-radius: 16px; background: #161618; border: 1px solid #2A2A2E; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 11px; color: #A1A1AA">記録先の系統</span>
+<span style="{{seriesStyle}}">{{seriesName}}</span>
+</div>
+<span style="font-size: 11px; color: #A1A1AA; flex-shrink: 0">前回と同じ条件</span>
+</div>
+<sc-for list="{{rows}}" as="row" hint-placeholder-count="6">
+<div role="radiogroup" aria-label="{{row.label}}" style="display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; align-items: center">
+<span style="font-size: 11px; color: #A1A1AA">{{row.label}}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 4px">
+<sc-for list="{{row.opts}}" as="o" hint-placeholder-count="3">
+<button role="radio" aria-checked="{{o.checked}}" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<sc-if value="{{gearOther}}" hint-placeholder-val="{{ false }}">
+<div style="display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; align-items: center">
+<label for="gear" style="font-size: 11px; color: #A1A1AA">器具名</label>
+<input id="gear" placeholder="例:シュノーケル" style="height: 38px; border-radius: 10px; border: 1px solid #2A2A2E; background: #0F0F11; color: #F4F4F5; padding: 0 10px; font-family: 'Noto Sans JP', sans-serif; font-size: 13px">
+</div>
+</sc-if>
+</section>
+
+<section aria-label="タイム" style="margin: 12px 16px 0; padding: 14px 16px; border-radius: 16px; background: #161618; border: 1px solid {{accent}}; display: flex; align-items: baseline; justify-content: space-between">
+<span style="font-size: 12px; color: #A1A1AA">{{repLabel}}</span>
+<span style="{{timeStyle}}">{{display}}</span>
+<span style="font-size: 14px; color: #A1A1AA">秒</span>
+</section>
+
+<div style="margin: 10px 16px 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{keys}}" as="k" hint-placeholder-count="12">
+<button aria-label="{{k.aria}}" onClick="{{k.press}}" style="height: 58px; border-radius: 14px; border: 1px solid #2A2A2E; background: #1C1C1F; color: #F4F4F5; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 28px; cursor: pointer">{{k.label}}</button>
+</sc-for>
+</div>
+
+<button onClick="{{save}}" style="margin: 10px 16px 0; width: calc(100% - 32px); height: 56px; border-radius: 14px; border: none; background: {{accent}}; color: #0B0B0C; font-family: 'Noto Sans JP', sans-serif; font-weight: 700; font-size: 16px; cursor: pointer">記録する</button>
+
+<section aria-label="今日の記録" style="margin: 14px 16px 0; padding: 14px 16px; border-radius: 16px; background: #161618; border: 1px solid #2A2A2E; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: baseline">
+<h2 style="margin: 0; font-size: 14px; font-weight: 700">今日の記録</h2>
+<span style="font-size: 12px; color: #A1A1AA">打ち切り目安 {{cutoff}}秒</span>
+</div>
+<sc-for list="{{reps}}" as="r" hint-placeholder-count="3">
+<div style="display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid #222226">
+<span style="font-size: 12px; color: #A1A1AA">{{r.n}}本目</span>
+<span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 22px">{{r.t}}</span>
+<span style="{{r.flagStyle}}">{{r.flag}}</span>
+</div>
+</sc-for>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+<div style="display: flex; flex-direction: column"><span style="font-size: 11px; color: #A1A1AA">最高</span><span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 24px; color: {{accent}}">{{best}}</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 11px; color: #A1A1AA">平均(有効)</span><span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 24px">{{avg}}</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 11px; color: #A1A1AA">有効本数</span><span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 24px">{{validCount}}</span></div>
+</div>
+<p style="margin: 0; font-size: 11px; color: #A1A1AA; line-height: 1.6">打ち切り目安は最初の3本の平均+3%。超えた本は平均から外し、終了を提案します。</p>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#FF6A1A","options":["#FF6A1A","#FFB020","#3DDC97","#4DA3FF"]},"$preview":{"width":390,"height":1180}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { sel: { pool: 0, dist: 0, stroke: 0, start: 0, timing: 0, gear: 0 }, digits: '', reps: [13.08, 13.15, 13.12] };
+}
+renderVals() {
+var self = this;
+var accent = this.props.accent ?? '#FF6A1A';
+var defs = [
+{ key: 'pool', label: 'プール', opts: ['短水路', '長水路'] },
+{ key: 'dist', label: '距離', opts: ['25m', '50m', '100m'] },
+{ key: 'stroke', label: '泳法', opts: ['自由形', 'バタフライ', '背泳ぎ', '平泳ぎ'] },
+{ key: 'start', label: 'スタート', opts: ['壁を蹴って', '飛び込み'] },
+{ key: 'timing', label: '計測', opts: ['指ウォッチ', '仲間', '動画', '大会公式'] },
+{ key: 'gear', label: '器具', opts: ['なし', 'フィン', 'パドル', 'フィン+パドル', 'その他'] }
+];
+var sel = this.state.sel;
+var rows = defs.map(function (d) {
+return {
+label: d.label,
+opts: d.opts.map(function (l, i) {
+var on = sel[d.key] === i;
+return {
+label: l, checked: on ? 'true' : 'false',
+pick: function () { var n = Object.assign({}, self.state.sel); n[d.key] = i; self.setState({ sel: n }); },
+style: 'min-height: 36px; padding: 0 10px; border-radius: 9px; font-family: Noto Sans JP, sans-serif; font-size: 12px; cursor: pointer; ' +
+(on ? 'border: none; background: ' + accent + '; color: #0B0B0C; font-weight: 700;' : 'border: 1px solid #2A2A2E; background: #0F0F11; color: #D4D4D8;')
+};
+})
+};
+});
+var key = defs.map(function (d) { return d.opts[sel[d.key]]; }).join('|');
+var names = {
+'短水路|25m|自由形|壁を蹴って|指ウォッチ|なし': 'ホーム25m(指ウォッチ)',
+'短水路|50m|自由形|壁を蹴って|指ウォッチ|なし': 'ホーム50m(指ウォッチ)',
+'長水路|25m|自由形|飛び込み|指ウォッチ|なし': '貸し切りDIVE25(指ウォッチ)',
+'長水路|50m|自由形|飛び込み|動画|なし': '貸し切りDIVE50(動画)'
+};
+var known = !!names[key];
+var reps = this.state.reps;
+var base = reps.length >= 3 ? (reps[0] + reps[1] + reps[2]) / 3 : null;
+var cut = base ? base * 1.03 : null;
+var valid = reps.filter(function (t) { return !cut || t <= cut; });
+var avg = valid.length ? valid.reduce(function (a, b) { return a + b; }, 0) / valid.length : null;
+var press = function (ch) {
+return function () {
+var d = self.state.digits;
+if (ch === 'del') { self.setState({ digits: d.slice(0, -1) }); return; }
+if (ch === '.' && d.indexOf('.') >= 0) return;
+if (d.length >= 6) return;
+self.setState({ digits: d + ch });
+};
+};
+var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'].map(function (k) {
+return { label: k === 'del' ? '⌫' : k, aria: k === 'del' ? '1文字消す' : (k === '.' ? '小数点' : k), press: press(k) };
+});
+var d = this.state.digits;
+return {
+accent: accent, rows: rows, keys: keys,
+gearOther: sel.gear === 4,
+seriesName: known ? names[key] : '新しい系統(この記録で作成)',
+seriesStyle: 'font-size: 15px; font-weight: 700; color: ' + (known ? '#F4F4F5' : accent) + ';',
+repLabel: (reps.length + 1) + '本目',
+display: d === '' ? '--.--' : d,
+timeStyle: 'font-family: Barlow Condensed, sans-serif; font-weight: 700; font-size: 56px; line-height: 1; color: ' + (d === '' ? '#52525B' : '#F4F4F5') + ';',
+save: function () {
+var t = parseFloat(self.state.digits);
+if (!isFinite(t) || t <= 0) return;
+self.setState({ reps: self.state.reps.concat([t]), digits: '' });
+},
+reps: reps.map(function (t, i) {
+var over = cut && i >= 3 && t > cut;
+return {
+n: i + 1, t: t.toFixed(2), flag: over ? '目安超え · 終了を提案' : (i < 3 ? '基準' : ''),
+flagStyle: 'font-size: 11px; font-weight: 700; color: ' + (over ? accent : '#71717A') + ';'
+};
+}),
+cutoff: cut ? cut.toFixed(2) : '—',
+best: reps.length ? Math.min.apply(null, reps).toFixed(2) : '—',
+avg: avg ? avg.toFixed(2) : '—',
+validCount: valid.length + ' / ' + reps.length
+};
+}
+}
+</script>
+</body>
+</html>

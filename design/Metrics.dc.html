@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>指標と目標</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&amp;family=Noto+Sans+JP:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;background:#0B0B0C}
+a{color:#FF8A4C}a:hover{color:#FFB08A}
+</style>
+</helmet>
+<div style="width: 390px; min-height: 1460px; box-sizing: border-box; background: #0B0B0C; color: #F4F4F5; font-family: 'Noto Sans JP', sans-serif; padding-bottom: 28px">
+
+<header style="display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 12px">
+<h1 style="margin: 0; font-size: 20px; font-weight: 700">指標と目標</h1>
+<a href="TimeEntry.dc.html" style="height: 40px; padding: 0 14px; border-radius: 12px; border: 1px solid #2A2A2E; background: #161618; color: #F4F4F5; font-size: 13px; text-decoration: none; display: flex; align-items: center">+ タイムを入力</a>
+</header>
+
+<section aria-label="目標" style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; background: #161618; border: 1px solid {{accent}}">
+<div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+<span style="font-size: 11px; color: {{accent}}; font-weight: 700">上部に表示中</span>
+<span style="font-size: 14px; font-weight: 700">長水路 50m自由形 30.00 切り</span>
+<span style="font-size: 12px; color: #A1A1AA">ベスト 30.42 · あと 0.42秒</span>
+</div>
+<span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 30px; color: {{accent}}">72%</span>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; background: #161618; border: 1px solid #2A2A2E">
+<div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+<span style="font-size: 14px; font-weight: 700">立ち幅跳び 3.00m</span>
+<span style="font-size: 12px; color: #A1A1AA">ベスト 2.70m · あと 0.30m</span>
+</div>
+<span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 30px; color: #D4D4D8">90%</span>
+</div>
+</section>
+
+<section aria-label="推移の比較" style="margin: 16px 16px 0; padding: 16px; border-radius: 18px; background: #161618; border: 1px solid #2A2A2E; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: baseline; justify-content: space-between">
+<h2 style="margin: 0; font-size: 15px; font-weight: 700">推移を重ねて見る</h2>
+<span style="font-size: 12px; color: #A1A1AA">{{shownCount}} / 5 系統</span>
+</div>
+<div role="radiogroup" aria-label="表示方法" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: #0F0F11">
+<sc-for list="{{modes}}" as="m" hint-placeholder-count="3">
+<button role="radio" aria-checked="{{m.checked}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button>
+</sc-for>
+</div>
+<p style="margin: 0; font-size: 11px; color: #A1A1AA; line-height: 1.6">{{modeNote}}</p>
+<svg width="326" height="190" viewBox="0 0 326 190" role="img" aria-label="大会記録、ホーム25m、長水路動画50m、スクワットと懸垂の推定1RMを重ねた推移(サンプル)">
+<rect x="150" y="12" width="70" height="146" fill="#202023"></rect>
+<text x="185" y="26" text-anchor="middle" font-size="10" fill="#A1A1AA" font-family="Noto Sans JP, sans-serif">試合期</text>
+<line x1="24" y1="30" x2="318" y2="30" stroke="#2A2A2E" stroke-width="1" stroke-dasharray="2 4"></line>
+<line x1="24" y1="150" x2="318" y2="150" stroke="#2A2A2E" stroke-width="1"></line>
+<text x="20" y="34" text-anchor="end" font-size="10" fill="#A1A1AA" font-family="Barlow Condensed, sans-serif">{{yTop}}</text>
+<text x="20" y="154" text-anchor="end" font-size="10" fill="#A1A1AA" font-family="Barlow Condensed, sans-serif">{{yBottom}}</text>
+<g opacity="{{op.pull}}"><polyline points="34,150 90,135 146,105 202,90 258,60 314,30" fill="none" stroke="#E58BF0" stroke-width="2.5" stroke-dasharray="2 5" stroke-linecap="round" stroke-linejoin="round"></polyline></g>
+<g opacity="{{op.squat}}"><polyline points="34,150 90,113 146,95 202,67 258,48 314,30" fill="none" stroke="#3DDC97" stroke-width="2.5" stroke-dasharray="8 5" stroke-linejoin="round"></polyline></g>
+<g opacity="{{op.home}}"><polyline points="34,150 90,125 146,108 202,72 258,44 314,30" fill="none" stroke="#5AB4FF" stroke-width="2.5" stroke-linejoin="round"></polyline><circle cx="34" cy="150" r="3" fill="#5AB4FF"></circle><circle cx="90" cy="125" r="3" fill="#5AB4FF"></circle><circle cx="146" cy="108" r="3" fill="#5AB4FF"></circle><circle cx="202" cy="72" r="3" fill="#5AB4FF"></circle><circle cx="258" cy="44" r="3" fill="#5AB4FF"></circle><circle cx="314" cy="30" r="3" fill="#5AB4FF"></circle></g>
+<g opacity="{{op.lc}}"><rect x="30" y="146" width="8" height="8" fill="#F5C542"></rect><rect x="142" y="96" width="8" height="8" fill="#F5C542"></rect><rect x="198" y="56" width="8" height="8" fill="#F5C542"></rect><rect x="310" y="26" width="8" height="8" fill="#F5C542"></rect></g>
+<g opacity="{{op.race}}"><path d="M90 143 97 150 90 157 83 150z" fill="{{accent}}"></path><path d="M258 23 265 30 258 37 251 30z" fill="{{accent}}"></path></g>
+<text x="34" y="176" text-anchor="middle" font-size="11" fill="#A1A1AA" font-family="Noto Sans JP, sans-serif">6月</text>
+<text x="90" y="176" text-anchor="middle" font-size="11" fill="#A1A1AA" font-family="Noto Sans JP, sans-serif">7月</text>
+<text x="146" y="176" text-anchor="middle" font-size="11" fill="#A1A1AA" font-family="Noto Sans JP, sans-serif">8月</text>
+<text x="202" y="176" text-anchor="middle" font-size="11" fill="#A1A1AA" font-family="Noto Sans JP, sans-serif">9月</text>
+<text x="258" y="176" text-anchor="middle" font-size="11" fill="#A1A1AA" font-family="Noto Sans JP, sans-serif">10月</text>
+<text x="314" y="176" text-anchor="middle" font-size="11" fill="#A1A1AA" font-family="Noto Sans JP, sans-serif">11月</text>
+</svg>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{series}}" as="s" hint-placeholder-count="5">
+<li>
+<button aria-pressed="{{s.pressed}}" onClick="{{s.toggle}}" style="{{s.rowStyle}}">
+<svg width="26" height="12" aria-hidden="true"><line x1="1" y1="6" x2="25" y2="6" stroke="{{s.color}}" stroke-width="3" stroke-dasharray="{{s.dash}}" stroke-linecap="round"></line></svg>
+<span style="display: flex; flex-direction: column; align-items: flex-start; gap: 1px; flex-grow: 1; min-width: 0; text-align: left">
+<span style="font-size: 13px; font-weight: 700; color: #F4F4F5">{{s.name}}</span>
+<span style="font-size: 10px; color: #A1A1AA">{{s.cond}}</span>
+</span>
+<span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 17px; color: {{s.color}}; flex-shrink: 0">{{s.delta}}</span>
+</button>
+</li>
+</sc-for>
+</ul>
+<button style="height: 40px; border-radius: 12px; border: 1px dashed #3A3A40; background: transparent; color: #D4D4D8; font-family: 'Noto Sans JP', sans-serif; font-size: 13px; cursor: pointer">系統を入れ替える(最大5)</button>
+<p style="margin: 0; font-size: 11px; color: #A1A1AA; line-height: 1.6">同時に伸びていても因果とは限りません。期分けや技術練習の記録と合わせて判断してください。</p>
+</section>
+
+<section aria-label="立ち幅跳び" style="margin: 12px 16px 0; padding: 16px; border-radius: 18px; background: #161618; border: 1px solid #2A2A2E; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; justify-content: space-between; align-items: baseline">
+<h2 style="margin: 0; font-size: 15px; font-weight: 700">立ち幅跳び</h2>
+<span style="font-size: 12px; color: #A1A1AA">11/5 · 5試技</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px">
+<sc-for list="{{trials}}" as="t" hint-placeholder-count="5">
+<div style="{{t.style}}">
+<span style="font-size: 10px; color: #A1A1AA">{{t.n}}</span>
+<span style="{{t.valStyle}}">{{t.v}}</span>
+</div>
+</sc-for>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+<div style="display: flex; flex-direction: column"><span style="font-size: 11px; color: #A1A1AA">最高</span><span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 28px; color: {{accent}}">2.70m</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 11px; color: #A1A1AA">平均(有効4本)</span><span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 28px">2.66m</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 11px; color: #A1A1AA">前回の平均</span><span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 28px; color: #A1A1AA">2.61m</span></div>
+</div>
+</section>
+
+<section aria-label="垂直跳び" style="margin: 12px 16px 0; padding: 16px; border-radius: 18px; background: #161618; border: 1px solid #2A2A2E; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: baseline">
+<h2 style="margin: 0; font-size: 15px; font-weight: 700">垂直跳び</h2>
+<span style="font-size: 12px; color: #A1A1AA">11/5 · 3試技</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+<div style="display: flex; flex-direction: column"><span style="font-size: 11px; color: #A1A1AA">最高</span><span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 28px; color: {{accent}}">48.5cm</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 11px; color: #A1A1AA">平均</span><span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 28px">47.2cm</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 11px; color: #A1A1AA">体重</span><span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 28px; color: #A1A1AA">68.4kg</span></div>
+</div>
+</section>
+
+<section aria-label="その他の指標" style="margin: 12px 16px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<div style="padding: 14px; border-radius: 16px; background: #161618; border: 1px solid #2A2A2E; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 11px; color: #A1A1AA">懸垂 実負荷/体重</span>
+<span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 26px">1.15</span>
+</div>
+<div style="padding: 14px; border-radius: 16px; background: #161618; border: 1px solid #2A2A2E; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 11px; color: #A1A1AA">ホーム25m 平均(11/8)</span>
+<span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 26px">13.12</span>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#FF6A1A","options":["#FF6A1A","#FFB020","#3DDC97","#4DA3FF"]},"$preview":{"width":390,"height":1460}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { mode: 0, on: { race: true, home: true, lc: true, squat: true, pull: true } };
+}
+renderVals() {
+var self = this;
+var accent = this.props.accent ?? '#FF6A1A';
+var defs = [
+{ id: 'race', name: '大会記録 50m自由形', cond: '長水路 · 飛び込み · 大会公式', color: accent, dash: '0', delta: '−0.68秒' },
+{ id: 'home', name: 'ホーム25m', cond: '短水路 · 壁を蹴って · 指ウォッチ · 平均', color: '#5AB4FF', dash: '0', delta: '−0.34秒' },
+{ id: 'lc', name: '貸し切りDIVE50', cond: '長水路 · 飛び込み · 動画', color: '#F5C542', dash: '0', delta: '−0.60秒' },
+{ id: 'squat', name: 'スミス・スクワット 推定1RM', cond: '10回以下のセットから計算', color: '#3DDC97', dash: '8 5', delta: '+14%' },
+{ id: 'pull', name: '懸垂 推定1RM(体重+加重)', cond: '10回以下のセットから計算', color: '#E58BF0', dash: '2 5', delta: '+9%' }
+];
+var on = this.state.on;
+var series = defs.map(function (d) {
+var vis = on[d.id];
+return {
+name: d.name, cond: d.cond, color: d.color, dash: d.dash, delta: d.delta,
+pressed: vis ? 'true' : 'false',
+toggle: function () { var n = Object.assign({}, self.state.on); n[d.id] = !n[d.id]; self.setState({ on: n }); },
+rowStyle: 'width: 100%; min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 12px; cursor: pointer; font-family: Noto Sans JP, sans-serif; ' +
+(vis ? 'background: #1C1C1F; border: 1px solid #2A2A2E; opacity: 1;' : 'background: transparent; border: 1px dashed #2A2A2E; opacity: 0.45;')
+};
+});
+var op = {};
+defs.forEach(function (d) { op[d.id] = on[d.id] ? 1 : 0.06; });
+var modeDefs = [
+{ label: '推移の形', note: '各系統の最初の値を0、期間内の最も良い値を100として並べます。どれが先に伸びたかを見る表示です。伸び幅は右の数値で確認します。', top: '100', bottom: '0' },
+{ label: '改善率', note: '基準日からの改善率(%)で並べます。タイムは縮むほど、重さは増えるほどプラス。伸び幅の大小を比べる表示です。', top: '+%', bottom: '0%' },
+{ label: '実数', note: '秒とkgの2軸で表示します。読みやすいのは2〜3系統までです。', top: '', bottom: '' }
+];
+var mode = this.state.mode;
+var modes = modeDefs.map(function (m, i) {
+var sel = i === mode;
+return {
+label: m.label, checked: sel ? 'true' : 'false',
+pick: function () { self.setState({ mode: i }); },
+style: 'height: 38px; border-radius: 9px; border: none; font-family: Noto Sans JP, sans-serif; font-size: 12px; cursor: pointer; ' +
+(sel ? 'background: #2A2A2E; color: #F4F4F5; font-weight: 700;' : 'background: transparent; color: #A1A1AA;')
+};
+});
+var shownCount = defs.filter(function (d) { return on[d.id]; }).length;
+var raw = [['1', '2.62'], ['2', '2.70', 'best'], ['3', 'F', 'foul'], ['4', '2.66'], ['5', '2.64']];
+var trials = raw.map(function (r) {
+var best = r[2] === 'best', foul = r[2] === 'foul';
+return {
+n: r[0] + '本目', v: foul ? 'ファウル' : r[1],
+style: 'display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border-radius: 10px; ' +
+(best ? 'background: #1E1712; border: 1px solid ' + accent + ';' : 'background: #1C1C1F; border: 1px solid transparent;'),
+valStyle: 'font-family: Barlow Condensed, sans-serif; font-weight: 700; ' +
+(foul ? 'font-size: 13px; color: #71717A; text-decoration: line-through;' : 'font-size: 20px; color: ' + (best ? accent : '#F4F4F5') + ';')
+};
+});
+return {
+accent: accent, trials: trials, series: series, op: op, modes: modes, shownCount: shownCount,
+modeNote: modeDefs[mode].note + (mode === 0 ? '' : '(試作のグラフは「推移の形」で描いています)'),
+yTop: modeDefs[0].top, yBottom: modeDefs[0].bottom
+};
+}
+}
+</script>
+</body>
+</html>
