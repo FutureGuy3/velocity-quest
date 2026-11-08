@@ -1,8 +1,8 @@
 // 起動:データベースを開く → 初期データ → テーマ色 → ルーター開始 → Service Worker 登録
-import { initRepo, getSettings } from './db/repo.js';
+import { initRepo, getSettings, getActiveWorkout } from './db/repo.js';
 import { seedIfNeeded } from './db/seed.js';
 import { route, fallback, startRouter } from './router.js';
-import { h, icon, mount } from './ui/dom.js';
+import { h, icon, mount, toast } from './ui/dom.js';
 import { renderHome } from './ui/screens/home.js';
 import { renderPlaceholder } from './ui/screens/placeholder.js';
 
@@ -55,9 +55,27 @@ async function boot() {
   registerRoutes();
   startRouter();
 
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('SW 登録に失敗', e));
-  }
+  registerServiceWorker();
+}
+
+// 新しい版が届いたら読み込み直す(1回目に開いたときから新しい版を見られるように)。
+// ただしトレーニング記録中は勝手に読み込み直さず、知らせるだけにする。
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', async () => {
+    if (!hadController || reloading) return; // 初回の登録では読み込み直さない
+    if (await getActiveWorkout()) {
+      toast('新しい版があります。トレーニングを終えてから開き直してください');
+      return;
+    }
+    reloading = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+    .then((reg) => reg.update())
+    .catch((e) => console.warn('SW 登録に失敗', e));
 }
 
 boot();

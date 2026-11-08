@@ -31,5 +31,6 @@ export async function renderHome() {
         h('p', { class: 'label', style: { marginTop: '8px' } }, 'この端末の ID'),
         h('p', { style: { fontSize: '12px', wordBreak: 'break-all' } }, getDeviceId())),
       h('a', { class: 'btn btn-ghost btn-block', href: './tests/calc.test.html' }, '計算のテストを開く'),
+      h('p', { class: 'label', style: { textAlign: 'center' } }, `版 ${self.VQ_VERSION}`),
     )), { showNav: true, navKey: 'home' });
 }

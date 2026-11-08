@@ -1,6 +1,7 @@
 // Service Worker:アプリ本体を事前キャッシュしてオフラインで動かす。
-// ファイルを変えたら CACHE_VERSION を上げること。
-const CACHE_VERSION = 'v1';
+// ファイルを変えたら js/version.js の版を上げること(キャッシュ名に使う)。
+importScripts('./js/version.js');
+const CACHE_VERSION = self.VQ_VERSION;
 const APP_CACHE = `vq-app-${CACHE_VERSION}`;
 const FONT_CACHE = 'vq-fonts';
 
@@ -11,6 +12,7 @@ const PRECACHE = [
   './css/tokens.css',
   './css/base.css',
   './css/components.css',
+  './js/version.js',
   './js/app.js',
   './js/router.js',
   './js/db/schema.js',
