@@ -59,7 +59,8 @@ export function icon(name, size = 20, strokeWidth = 2) {
 }
 
 /** 画面を差し替える。showNav=false でサブ画面(下部ナビを隠す) */
-export function mount(node, { showNav = true, navKey = null } = {}) {
+export function mount(node, { showNav = true, navKey = null, keepScroll = false } = {}) {
+  const y = window.scrollY;
   const app = document.getElementById('app');
   app.replaceChildren(node);
   const nav = document.getElementById('nav');
@@ -69,7 +70,7 @@ export function mount(node, { showNav = true, navKey = null } = {}) {
     if (a.dataset.key === navKey) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
-  window.scrollTo(0, 0);
+  window.scrollTo(0, keepScroll ? y : 0);
 }
 
 let toastTimer = null;

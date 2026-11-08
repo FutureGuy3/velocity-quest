@@ -6,6 +6,8 @@ import { h, icon, mount, toast } from './ui/dom.js';
 import { renderHome } from './ui/screens/home.js';
 import { renderPlaceholder } from './ui/screens/placeholder.js';
 import { renderSettings } from './ui/screens/settings.js';
+import { renderGoalEdit } from './ui/screens/goalEdit.js';
+import { renderMetrics } from './ui/screens/metrics.js';
 
 export function applyAccent(color) {
   document.documentElement.style.setProperty('--accent', color);
@@ -28,14 +30,14 @@ function registerRoutes() {
   route('/home', () => renderHome());
   route('/workout', () => renderPlaceholder('トレーニング', 'workout'));
   route('/workout/:id', () => renderPlaceholder('トレーニング記録', null));
-  route('/metrics', () => renderPlaceholder('指標と目標', 'metrics'));
+  route('/metrics', () => renderMetrics());
   route('/history', () => renderPlaceholder('履歴', 'history'));
   route('/history/:id', () => renderPlaceholder('練習の詳細', null));
   route('/settings', () => renderSettings());
   route('/routine/new', () => renderPlaceholder('ルーティンを作る', null));
   route('/routine/:id', () => renderPlaceholder('ルーティンの編集', null));
-  route('/goal/new', () => renderPlaceholder('目標を作る', null));
-  route('/goal/:id', () => renderPlaceholder('目標の編集', null));
+  route('/goal/new', (r) => renderGoalEdit(r));
+  route('/goal/:id', (r) => renderGoalEdit(r));
   fallback(() => renderPlaceholder('ページが見つかりません', null));
 }
 

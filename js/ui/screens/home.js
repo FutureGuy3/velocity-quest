@@ -7,7 +7,7 @@ import {
   listRoutines, getRoutineLastDates,
   getActiveWorkout, startWorkout, deleteWorkout,
 } from '../../db/repo.js';
-import { goalProgress, fmt } from '../../domain/calc.js';
+import { goalTexts } from '../goalFormat.js';
 import { navigate } from '../../router.js';
 
 export async function renderHome() {
@@ -44,44 +44,22 @@ export async function renderHome() {
 
 /* ---------- 目標 ---------- */
 
-const UNIT_DIGITS = { '秒': 2, 'm': 2, 'cm': 1, 'kg': 1 };
-
-function fmtGoalValue(v, unit) {
-  if (v == null) return '—';
-  const d = UNIT_DIGITS[unit];
-  return d != null ? Number(v).toFixed(d) : fmt(v, 2);
-}
-
 function goalCard(goal, best, today) {
-  const p = goalProgress(goal, best, today);
-  const unit = goal.unit || '';
-  const lower = goal.direction === 'lower';
-  const bestLabel = best?.source === 'latest' ? '現在' : 'ベスト';
-
-  let remain = '—';
-  if (p.achieved) remain = '達成';
-  else if (p.remaining != null) remain = fmtGoalValue(p.remaining, unit) + unit;
-
-  let days = '—';
-  if (p.daysLeft != null) days = p.daysLeft >= 0 ? `${p.daysLeft}日` : '期限切れ';
-
-  return h('a', { class: 'goal-card', href: '#/metrics', 'aria-label': '目標の詳細へ' },
+  const t = goalTexts(goal, best, today);
+  return h('a', { class: 'goal-card', href: '#/metrics', 'aria-label': '目標の一覧へ' },
     h('div', { class: 'goal-head' },
       h('span', { class: 'goal-title' }, `目標|${goal.title || ''}`),
       h('span', { role: 'img', 'aria-label': '上部に固定中' }, icon('pin', 16, 2.2))),
     h('div', { class: 'goal-target' },
-      h('span', { class: 'num' }, fmtGoalValue(goal.target, unit)),
-      h('span', { class: 'suffix' }, lower ? `${unit}切り` : `${unit}`)),
-    h('div', { class: 'goal-bar', role: 'progressbar', 'aria-label': '目標までの進み具合',
-      'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': p.progress == null ? 0 : Math.round(p.progress * 100) },
-    h('div', { style: { width: `${p.progress == null ? 0 : Math.round(p.progress * 100)}%` } })),
+      h('span', { class: 'num' }, t.target),
+      h('span', { class: 'suffix' }, t.suffix)),
     h('div', { class: 'goal-stats' },
       h('div', {},
-        h('span', { class: 'k' }, bestLabel),
-        h('span', { class: 'v' }, best ? fmtGoalValue(best.value, unit) : '記録なし'),
-        best?.date ? h('span', { class: 'd' }, formatDateShort(best.date)) : null),
-      h('div', {}, h('span', { class: 'k' }, 'あと'), h('span', { class: 'v' }, remain)),
-      h('div', {}, h('span', { class: 'k' }, '期限まで'), h('span', { class: 'v' }, days))));
+        h('span', { class: 'k' }, t.bestLabel),
+        h('span', { class: 'v' }, t.best),
+        t.bestDate ? h('span', { class: 'd' }, t.bestDate) : null),
+      h('div', {}, h('span', { class: 'k' }, 'あと'), h('span', { class: 'v' }, t.remain)),
+      h('div', {}, h('span', { class: 'k' }, '期限まで'), h('span', { class: 'v' }, t.days))));
 }
 
 function goalEmpty() {

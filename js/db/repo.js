@@ -292,7 +292,16 @@ export async function listGoals() {
   return (await db.goals.toArray()).filter(alive).sort((a, b) => (b.pinned === true) - (a.pinned === true) || a.createdAt.localeCompare(b.createdAt));
 }
 export function getGoal(id) { return getAlive('goals', id); }
-export function saveGoal(g) { return put('goals', g); }
+/** 保存。上部に表示する目標は1つだけなので、pinned にしたら他の目標の pinned を外す */
+export async function saveGoal(g) {
+  const saved = await put('goals', g);
+  if (saved.pinned) {
+    for (const other of await listGoals()) {
+      if (other.id !== saved.id && other.pinned) await put('goals', { ...other, pinned: false });
+    }
+  }
+  return saved;
+}
 
 /** ホーム上部に表示する目標(上部表示の印が付いた最初の1つ) */
 export async function getPinnedGoal() {

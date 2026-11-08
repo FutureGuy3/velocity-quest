@@ -81,6 +81,18 @@ eq('目標:ベストなし', c.goalProgress({ target: 30, direction: 'lower' }, 
 eq('ベスト比較:タイムは小さい方', c.betterBest({ value: 30.42, date: '2026-10-01' }, { value: 30.1, date: '2026-11-01' }, 'lower').value, 30.1);
 eq('ベスト比較:片方だけ', c.betterBest(null, { value: 2.7, date: '2026-11-05' }).value, 2.7);
 
+// 入力の読み取り
+eq('読み取り:68.4', c.parseNumber('68.4'), 68.4);
+eq('読み取り:全角とカンマ 68,4', c.parseNumber('６８,４'), 68.4);
+eq('読み取り:文字は null', c.parseNumber('abc'), null);
+eq('読み取り:空は null', c.parseNumber(''), null);
+eq('読み取り:分:秒 1:02.34 = 62.34', c.parseNumber('1:02.34', { allowClock: true }), 62.34);
+eq('読み取り:分:秒を許さないときは null', c.parseNumber('1:02.34'), null);
+eq('読み取り:秒が60以上は null', c.parseNumber('1:75', { allowClock: true }), null);
+eq('秒の表示:30.42', c.formatSeconds(30.42), '30.42');
+eq('秒の表示:62.34 = 1:02.34', c.formatSeconds(62.34), '1:02.34');
+eq('秒の表示:30 = 30.00', c.formatSeconds(30), '30.00');
+
 // 表示
 eq('時計:134秒 = 2:14', c.formatClock(134), '2:14');
 eq('経過:42分15秒', c.formatElapsed((42 * 60 + 15) * 1000), '00:42:15');

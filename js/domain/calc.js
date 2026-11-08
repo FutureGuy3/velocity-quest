@@ -181,3 +181,33 @@ export function fmt(n, maxDigits = 2) {
   if (n == null || !Number.isFinite(Number(n))) return '—';
   return String(round(Number(n), maxDigits));
 }
+
+/**
+ * 入力された数値を読む。全角数字・カンマ小数点も受け付ける。
+ * allowClock = true のとき「1:02.34」のような分:秒も秒に直す(62.34)
+ * 読めなければ null
+ */
+export function parseNumber(text, { allowClock = false } = {}) {
+  if (text == null) return null;
+  const s = String(text).normalize('NFKC').trim().replace(/,/g, '.');
+  if (!s) return null;
+  if (allowClock && s.includes(':')) {
+    const m = s.match(/^(\d+):(\d{1,2}(?:\.\d+)?)$/);
+    if (!m || Number(m[2]) >= 60) return null;
+    return round(Number(m[1]) * 60 + Number(m[2]), 3);
+  }
+  if (!/^-?\d+(\.\d+)?$|^-?\.\d+$/.test(s)) return null;
+  return Number(s);
+}
+
+/** 秒の表示:60秒未満は 30.42、60秒以上は 1:02.34 */
+export function formatSeconds(sec, digits = 2) {
+  if (sec == null || !Number.isFinite(Number(sec))) return '—';
+  const v = Number(sec);
+  if (Math.abs(v) < 60) return v.toFixed(digits);
+  const sign = v < 0 ? '-' : '';
+  const a = Math.abs(v);
+  const m = Math.floor(a / 60);
+  const rest = (a - m * 60).toFixed(digits).padStart(digits + 3, '0');
+  return `${sign}${m}:${rest}`;
+}
