@@ -17,11 +17,10 @@ js/router.js          ハッシュルーター(#/path/:id?query)
 js/db/schema.js       Dexie のテーブル定義と version()、移行処理
 js/db/repo.js         データ層。画面はここだけを使う
 js/db/seed.js         data/exercises.json と既定の器具の投入(足りない分だけ追加)
-js/db/backup.js       JSON 書き出し・読み込み(repo.js から呼ぶ)
 js/domain/recordTypes.js  記録の型ごとの入力欄・表示・ベストの決め方
 js/domain/calc.js     合計の重さ、実負荷、推定1RM、体重比、試技の集計、目標の残り
-js/ui/dom.js          小さな要素生成ヘルパー(h() と SVG アイコン集)
-js/ui/screens/        home.js, picker.js, exerciseEdit.js, routineEdit.js,
+js/ui/dom.js          小さな要素生成ヘルパー(h() と SVG アイコン集、画面の差し替え、日付の表示)
+js/ui/screens/        placeholder.js(未作成の画面の仮表示), home.js, picker.js, exerciseEdit.js, routineEdit.js,
                       workoutStart.js, workout.js, history.js, historyDetail.js,
                       metrics.js, goalEdit.js, trialEdit.js, settings.js
 js/ui/components/     restTimer.js, numberInput.js, faceScale.js, weightBreakdown.js,
@@ -41,17 +40,17 @@ IndexedDB は真偽値をインデックスにできないため、`deleted` で
 | --- | --- | --- |
 | exercises | `id, updatedAt, bodyPart` | name, bodyPart, subParts[], equipment, recordType, unilateral, increment, restSec, gearId, unit, hidden, builtin, starred |
 | gear(器具) | `id, updatedAt` | name, barWeight |
-| routines | `id, updatedAt` | name, order, items[{key, exerciseId, sets, reps, restSec}], papPairs[{fromKey, toKey, restSec:180}] |
-| workouts | `id, updatedAt, date, status` | date(YYYY-MM-DD), startedAt, endedAt, status(active/done), routineId, bodyweight, memo, items[{key, exerciseId, sideMode, restSec, papToKey}] |
+| routines | `id, updatedAt` | name, order, items[{key, exerciseId, sets, reps, restSec, pap}] |
+| workouts | `id, updatedAt, date, status` | date(YYYY-MM-DD), startedAt, endedAt, status(active/done), routineId, bodyweight, memo, items[{key, exerciseId, sideMode, restSec, pap}] |
 | sets | `id, updatedAt, workoutId, [exerciseId+date]` | workoutId, itemKey, exerciseId, date, order, warmup, sideMode, breakdown{bar, platePerSide, added, assist}, weight, reps, left{weight,reps}, right{weight,reps}, seconds, distance, heightCm, contacts, band, rpeFace(1〜5), memo, done |
 | bodyweights | `id, updatedAt, date` | date, kg(同じ日は上書き) |
 | trials(試技) | `id, updatedAt, [exerciseId+date], workoutId` | exerciseId(立ち幅跳び等), date, attempts[{value, foul}], memo |
-| goals | `id, updatedAt` | title, metric{type, exerciseId, stat}, target, direction(higher/lower), deadline, pinned |
+| goals | `id, updatedAt` | title, metric{type, exerciseId, stat}, target, direction(higher/lower), deadline, pinned, manualBest{value, date} |
 | settings | `id` | id="user" の1件。unit, accent など(同期対象) |
 | meta | `key` | 端末だけの情報:deviceId, seedVersion。**同期・書き出しの対象外** |
 
 - ルーティンの種目並びとトレーニングの種目並びは、レコード内の配列に持つ(並べ替えが1回の更新で済む)。セットは別テーブル(種目ごとの「前回」「自己ベスト」を引くため、同期の単位を小さくするため)。
-- `key` は配列内の要素を指す UUID(同じ種目を2回入れても区別できる。PAP のペアもこれで指す)。
+- `key` は配列内の要素を指す UUID(同じ種目を2回入れても区別できる)。
 - 種目は `exerciseId` でのみ参照。名前はその都度引く。
 
 ### repo.js の関数(画面から使うのはこれだけ)
@@ -64,7 +63,7 @@ IndexedDB は真偽値をインデックスにできないため、`deleted` で
 `saveBodyweight(date, kg) / getBodyweightOn(date) / getLatestBodyweight`、
 `listTrials / saveTrial / deleteTrial`、
 `listGoals / saveGoal / deleteGoal / getGoalProgress(goal)`、
-`getSettings / saveSettings`、`exportAll / importAll`。
+`getSettings / saveSettings`、`exportAll / importAll`(JSON の書き出し・読み込みも repo.js に置く。全テーブルを1か所で扱うため)。
 保存系はすべて内部の `put(table, obj)` を通り、ここで updatedAt・deviceId・ownerId を付ける。段階3ではこの1か所に同期キューを足す。
 
 ## 3. 画面と遷移
@@ -74,7 +73,7 @@ IndexedDB は真偽値をインデックスにできないため、`deleted` で
 | ルート | 画面 |
 | --- | --- |
 | `#/home` | 目標カード(上部表示の目標)、今日の体重、ルーティン一覧、ルーティンなしで開始、右上に設定 |
-| `#/routine/new` `#/routine/:id` | ルーティン編集(名前、種目の並び替え・削除、セット×回数、休憩、PAP ペア) |
+| `#/routine/new` `#/routine/:id` | ルーティン編集(名前、種目の並び替え・削除、セット×回数、休憩、□PAP) |
 | `#/picker?to=routine:<id>` / `?to=workout:<id>` | 種目を選ぶ(部位タブ、器具チップ、検索、片側可、複数選択して追加) |
 | `#/exercise/new` `#/exercise/:id` | 種目の登録・編集・非表示 |
 | `#/exercises` | 種目の管理(非表示の種目も表示して戻せる。設定から入る) |
@@ -95,7 +94,7 @@ IndexedDB は真偽値をインデックスにできないため、`deleted` で
 3. トレーニング記録(大きいので3回に分ける)
    - 3a:開始(ルーティン/空)、weight_reps のセット入力、重さの内訳、完了、休憩タイマー、消灯防止、前回・自己ベスト
    - 3b:他の記録の型(bw_plus / bw_minus / reps / time / height_reps / contacts / distance_band / trials)、片側の3方式、ウォームアップ、感触とメモ
-   - 3c:種目の追加・削除・並べ替え、PAP タイマー、終了とルーティンへの反映
+   - 3c:種目の追加・削除・並べ替え、PAP の休憩、終了とルーティンへの反映
 4. 履歴
 5. 指標(目標・試技)と、ホームの目標カードの中身
 6. 設定(単位、器具、テーマ色、書き出し・読み込み、種目の管理)
@@ -117,11 +116,13 @@ IndexedDB は真偽値をインデックスにできないため、`deleted` で
 
 ## 6. 確定事項(2026-11-08 依頼者の回答)
 
-- **目標は「出したい値の宣言」**。目標値と期限だけで成り立ち、記録の有無とは無関係。ベスト・あと何秒は、記録から出せるときだけ添える(水泳タイムは段階2までは「記録なし」と表示)。ベストの手入力欄は作らない。
-- **PAP の使い方**:例)加重懸垂。アップ → 重く3回 → 3分休憩 → 重く3回 → 3分休憩 → 重く3回 → 3分休憩 → 自重懸垂を爆発的に1セット。
-  - 重い種目の休憩の初期値を3分にし、タイマーの表示を「PAP」にする。
-  - ペアは「重い種目 → 爆発的な種目」を結ぶ。重い種目の最後のセットを完了すると、3分タイマーに「次:自重懸垂」と出し、その種目へ画面を送る。
-  - 爆発的な種目の予定は1セットが基本(ルーティンで変えられる)。
-- **単位**:kg に固定し、設定に単位の項目は置かない(国内のジムは kg。lb は換算で端数が出るため)。跳躍は種目データどおり立ち幅跳び m、垂直跳び cm。
+- **目標**:目標は「出したい値の宣言」(目標値と期限)。それとは別に「ベストとその日付」を手で入力する欄を設ける。ホームの「ベスト」は、手入力のベストと記録から出したベストのうち良い方を、日付と一緒に表示する(水泳タイムは段階2まで手入力のみ)。
+- **PAP**:種目が重いかどうかをアプリは判断しない。ルーティン作成時に種目ごとに「□PAP」をチェックすると、休憩が3分になり、タイマーに「PAP」と表示する。
+  - 組み合わせ(例:加重懸垂 → 自重懸垂)は、利用者がルーティンの並び順で自由に決める。専用の「ペア」設定は作らない。
+  - PAP の種目の最後のセットを完了すると、3分タイマーに「次:(並びで次の種目)」と表示する。
+  - 加重懸垂 → 自重懸垂のペアは、段階4のプリセットのサンプルとして入れる(段階1では作らない)。
+  - トレーニング中も種目ごとに PAP を付け外しできる。
+- **試技**:トレーニング記録の画面と指標の画面の両方から入力できる。保存先は同じ試技のテーブル。
+- **単位**:kg に固定。設定に単位の項目は置かない。跳躍は立ち幅跳び m、垂直跳び cm。
 - **最初から入っている種目の id**:exercises.json の id をそのまま使う(どの端末でも同じ id になり、同期で二重にならない)。自分で登録した種目は UUID。
 - **作る順番**:履歴 → 指標(目標・試技)→ 設定。

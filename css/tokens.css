@@ -1,0 +1,30 @@
+/* 色・文字・形の変数。--accent は設定(テーマの色)で上書きする */
+:root {
+  --bg: #0B0B0C;
+  --card: #161618;
+  --card-deep: #0F0F11;
+  --card-raised: #1C1C1F;
+  --surface-2: #202023;
+  --line: #2A2A2E;
+  --line-strong: #3A3A40;
+  --nav-bg: #111113;
+  --nav-line: #222226;
+  --text: #F4F4F5;
+  --text-2: #D4D4D8;
+  --muted: #A1A1AA;
+  --faint: #52525B;
+  --warm: #FFB020;          /* ウォームアップの印 */
+  --accent: #FF6A1A;
+  --on-accent: #0B0B0C;
+
+  --font-num: 'Barlow Condensed', 'Noto Sans JP', sans-serif;
+  --font-body: 'Noto Sans JP', system-ui, sans-serif;
+
+  --r-sm: 10px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 18px;
+  --tap: 44px;
+  --gutter: 16px;
+  --nav-h: 84px;
+}
