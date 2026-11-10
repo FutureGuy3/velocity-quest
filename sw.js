@@ -40,6 +40,8 @@ const PRECACHE = [
   './js/ui/components/reorder.js',
   './js/ui/components/pads.js',
   './js/domain/presets.js',
+  './js/ui/components/miniChart.js',
+  './js/ui/screens/bodyweight.js',
   './data/exercises.json',
   './vendor/dexie.mjs',
   './icons/icon-192.png',

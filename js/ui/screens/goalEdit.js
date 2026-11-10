@@ -1,9 +1,12 @@
 // 目標の作成・編集
-import { h, icon, mount, toast } from '../dom.js';
+import { h, icon, mount, toast, formatDateShort } from '../dom.js';
 import {
   getGoal, saveGoal, deleteGoal, listExercises, getExerciseMap, localDate,
+  getGoalBest, getGoalHistory, setNextGoal,
 } from '../../db/repo.js';
-import { parseNumber } from '../../domain/calc.js';
+import { parseNumber, goalProgress } from '../../domain/calc.js';
+import { openOverlay } from '../components/overlay.js';
+import { miniChart } from '../components/miniChart.js';
 import { BODY_PARTS } from '../../domain/recordTypes.js';
 import { GOAL_UNITS, fmtGoalValue } from '../goalFormat.js';
 import { back } from '../../router.js';
@@ -160,6 +163,70 @@ export async function renderGoalEdit({ params }) {
 
   /* ---------- 描画 ---------- */
 
+  /* ---------- 目標の推移と「次の目標を立てる」 ---------- */
+  let historySection = null;
+  if (existing) {
+    const today = localDate();
+    const [best, hist] = await Promise.all([getGoalBest(existing), getGoalHistory(existing)]);
+    const unit = existing.unit || '';
+    const lower = existing.direction === 'lower';
+    const achieved = goalProgress(existing, best, today).achieved;
+    const f = (v) => fmtGoalValue(v, unit);
+    const RESULT = { achieved: '達成', changed: '変更' };
+
+    const openNext = () => openOverlay({
+      title: '次の目標を立てる',
+      subtitle: existing.title,
+      render(api) {
+        const clock = unit === '秒';
+        const tIn = h('input', { id: 'next-target', class: 'input num-input', inputmode: clock ? 'text' : 'decimal', placeholder: f(existing.target) });
+        const dIn = h('input', { id: 'next-deadline', class: 'input', type: 'date', min: today });
+        return h('form', {
+          class: 'form', novalidate: true,
+          onsubmit: async (e) => {
+            e.preventDefault();
+            const v = parseNumber(tIn.value, { allowClock: clock });
+            if (v == null) { toast('新しい目標値を数字で入れてください'); return; }
+            await setNextGoal(existing.id, { target: v, deadline: dIn.value || null });
+            toast(achieved ? '達成した目標を記録して、次の目標を立てました' : 'いまの目標を「変更」として記録して、次の目標を立てました');
+            api.close();
+            renderGoalEdit({ params });
+          },
+        },
+        h('p', { class: 'hint' }, achieved
+          ? `いまの目標 ${f(existing.target)}${unit} は「達成」として推移に残ります。`
+          : `いまの目標 ${f(existing.target)}${unit} はまだ届いていないので、「変更」として推移に残ります。`),
+        h('div', { class: 'row2' },
+          h('div', { class: 'field' }, h('label', { for: 'next-target' }, `新しい目標値(${unit})`), tIn),
+          h('div', { class: 'field' }, h('label', { for: 'next-deadline' }, '期限(なくてもよい)'), dIn)),
+        clock ? h('p', { class: 'hint', style: { marginTop: '-10px' } }, '1分を超えるタイムは 1:02.50 のように入れられます') : null,
+        h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, '次の目標にする'));
+      },
+    });
+
+    // いまの目標は期限まで(期限がなければ今日まで)線を引き、どこまで先を見た目標かが分かるようにする
+    const steps = hist.targets.filter((t) => t.value != null).map((t) => ({ from: t.setOn, to: t.endedOn || (t.deadline && t.deadline > today ? t.deadline : null), value: t.value, result: t.result }));
+    historySection = h('div', { class: 'stack', style: { marginBottom: '6px' } },
+      achieved ? h('div', { class: 'achieved-banner' },
+        h('span', {}, `目標 ${f(existing.target)}${unit} を達成しています`),
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: openNext }, '次の目標を立てる')) : null,
+      h('section', { class: 'card trial-card', 'aria-label': '目標の推移' },
+        h('div', { class: 'trial-head' }, h('h2', {}, '目標の推移'),
+          h('span', { class: 'label' }, lower ? '上ほど速い(小さい)' : '上ほど大きい')),
+        miniChart({
+          points: hist.bests.map((b) => ({ date: b.date, value: b.value })), steps, today,
+          better: lower ? 'lower' : 'higher', format: f, label: '目標値とベストの推移',
+        }),
+        h('p', { class: 'hint' }, '破線が目標値(○は達成)、オレンジの点と線がベスト。'),
+        h('div', { class: 'trial-past' },
+          hist.targets.slice().reverse().map((t) => h('div', { class: 'target-row' },
+            h('span', {}, `${formatDateShort(t.setOn)}〜${t.endedOn ? formatDateShort(t.endedOn) : 'いま'}`),
+            h('span', { class: 'num' }, `${f(t.value)}${unit}`),
+            h('span', { class: `tag-mini${t.result === 'achieved' ? ' accent' : ''}` }, t.result ? RESULT[t.result] : (t.deadline ? `期限 ${formatDateShort(t.deadline)}` : 'いまの目標'))))),
+        !achieved ? h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: openNext }, '次の目標を立てる(目標を変える)') : null),
+      h('p', { class: 'hint', style: { padding: '0 4px' } }, '下の欄で目標値を書き換えると、いまの目標の訂正になります(推移には残りません)。'));
+  }
+
   let firstRender = true;
   function render() {
     const clock = st.unit === '秒';
@@ -223,6 +290,7 @@ export async function renderGoalEdit({ params }) {
       h('header', { class: 'topbar' },
         h('button', { class: 'icon-btn', 'aria-label': '戻る', onclick: () => back('/metrics') }, icon('back')),
         h('div', { class: 'topbar-title' }, h('span', { class: 'topbar-h' }, isNew ? '目標を作る' : '目標の編集'))),
+      historySection,
       form,
       h('div', { style: { height: '24px' } })), { showNav: false, keepScroll: !firstRender });
     firstRender = false;

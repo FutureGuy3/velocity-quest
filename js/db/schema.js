@@ -39,7 +39,27 @@ export function openDb() {
     });
   });
 
+  // 版3:目標に「目標値の履歴」(targets)と「手で入れたベストの記録」(bestLog)を持たせる
+  db.version(3).stores({}).upgrade(async (tx) => {
+    await tx.table('goals').toCollection().modify((g) => { Object.assign(g, migrateGoal(g)); });
+  });
+
   return db;
+}
+
+/**
+ * 版2までの目標を、履歴を持つ形に直す
+ * targets: [{ value, deadline, setOn, endedOn, result }](result は 'achieved' | 'changed' | null=いまの目標)
+ * bestLog: [{ value, date }](手で入れたベストを更新した記録)
+ */
+export function migrateGoal(g) {
+  if (Array.isArray(g.targets)) return g;
+  const setOn = (g.createdAt || new Date().toISOString()).slice(0, 10);
+  return {
+    ...g,
+    targets: [{ value: g.target ?? null, deadline: g.deadline ?? null, setOn, endedOn: null, result: null }],
+    bestLog: g.manualBest && g.manualBest.value != null ? [{ value: g.manualBest.value, date: g.manualBest.date || setOn }] : [],
+  };
 }
 
 /** 版1のルーティンの種目(sets, reps, restSec)を、セットごとの予定に直す */

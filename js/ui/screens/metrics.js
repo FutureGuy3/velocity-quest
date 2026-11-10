@@ -3,7 +3,7 @@
 import { h, icon, mount, toast } from '../dom.js';
 import {
   listGoals, getGoalBest, localDate, GOAL_METRICS, listExercises, listTrials,
-  getSettings, saveSettings, getExerciseMap, getExerciseProgress, reorderGoals,
+  getSettings, saveSettings, getExerciseMap, getExerciseProgress, reorderGoals, listBodyweights,
 } from '../../db/repo.js';
 import { openReorder } from '../components/reorder.js';
 import { openPicker } from '../components/picker.js';
@@ -19,6 +19,13 @@ export async function renderMetrics() {
   const bests = await Promise.all(goals.map((g) => getGoalBest(g)));
   const trialExercises = (await listExercises()).filter((e) => e.recordType === 'trials');
   const trialSections = await Promise.all(trialExercises.map(async (ex) => trialSection(ex, await listTrials(ex.id))));
+  const bws = await listBodyweights();
+  const lastBw = bws[bws.length - 1];
+  const bwCard = h('a', { class: 'goal-row', href: '#/bodyweight' },
+    h('div', { class: 'info' },
+      h('span', { class: 'title' }, lastBw ? `${lastBw.kg.toFixed(1)}kg` : '記録なし'),
+      h('span', { class: 'sub' }, lastBw ? `${formatDateShort(lastBw.date)} · 記録 ${bws.length}日分` : 'ホームか、ここから記録できます')),
+    h('span', { style: { color: 'var(--faint)', display: 'inline-flex' } }, icon('forward', 18)));
   const settings = await getSettings();
   const exMap = await getExerciseMap();
   const tracked = (settings.trackedExercises || []).map((id) => exMap.get(id)).filter(Boolean);
@@ -67,6 +74,8 @@ export async function renderMetrics() {
           title: ex.name, actions: [{ label: '推移の一覧から外す', danger: true, onSelect: () => untrack(ex.id) }],
         })))
         : h('p', { class: 'empty', style: { padding: '8px 4px' } }, '加重懸垂やルーマニアンデッドリフトなど、ベストの推移を見たい種目を「+ 種目を追加」で選んでください。')),
+    h('div', { class: 'section-head' }, h('h2', {}, '体重'), h('a', { href: '#/bodyweight' }, '推移・一覧')),
+    h('div', { class: 'stack' }, bwCard),
     h('div', { class: 'section-head' }, h('h2', {}, '試技')),
     trialSections,
   ), { showNav: true, navKey: 'metrics' });
@@ -77,7 +86,7 @@ function goalRow(g, best, today) {
   const how = GOAL_METRICS[g.metric?.type] || '';
   return h('a', { class: `goal-row${g.pinned ? ' pinned' : ''}`, href: `#/goal/${g.id}`, 'aria-label': `${g.title}を編集` },
     h('div', { class: 'info' },
-      g.pinned ? h('span', { class: 'tag' }, 'ホームに表示中') : null,
+      g.pinned || t.achieved ? h('span', { class: 'tag' }, [g.pinned ? 'ホームに表示中' : '', t.achieved ? '達成 · 次の目標を立てられます' : ''].filter(Boolean).join(' · ')) : null,
       h('span', { class: 'title' }, `${g.title} ${t.target}${t.suffix}`),
       h('span', { class: 'sub' }, `${how} · ${t.bestLabel} ${t.best}${t.bestDate ? `(${t.bestDate})` : ''} · あと ${t.remain}`)),
     h('div', { class: 'right' },

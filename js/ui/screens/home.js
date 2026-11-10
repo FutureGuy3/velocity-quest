@@ -147,7 +147,9 @@ function bodyweightCard(today, todayBw, latestBw) {
 
   return h('form', { class: 'bw-card', 'aria-label': '今日の体重', onsubmit: onSubmit },
     h('div', { class: 'bw-main' },
-      h('label', { for: 'bw', class: 'label' }, '今日の体重'),
+      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '-10px', marginBottom: '-8px' } },
+        h('label', { for: 'bw', class: 'label' }, '今日の体重'),
+        h('a', { class: 'bw-link', href: '#/bodyweight' }, '推移・一覧')),
       h('div', { class: 'bw-row' },
         input,
         h('span', { class: 'muted' }, 'kg'),

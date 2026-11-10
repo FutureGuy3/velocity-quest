@@ -478,3 +478,13 @@ body.overlay-open { overflow: hidden; }
 .trial-head .icon-btn { width: var(--tap); height: var(--tap); }
 .sheet-btn { line-height: 1.4; padding-top: 10px; padding-bottom: 10px; }
 .cell-btn:disabled { opacity: 0.6; }
+
+/* ---- 目標の推移・体重 ---- */
+.mini-chart { width: 100%; height: auto; display: block; }
+.achieved-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-radius: var(--r-lg); background: #1E1712; border: 1px solid var(--accent); font-weight: 700; font-size: 14px; }
+.target-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; min-height: var(--tap); border-top: 1px solid #1F1F23; font-size: 13px; color: var(--text-2); }
+.bw-item { display: grid; grid-template-columns: minmax(0, 1fr) auto 56px; gap: 10px; align-items: center; min-height: 52px; padding: 0 14px; border-radius: var(--r-md); background: var(--card); border: 1px solid var(--line); color: var(--text); text-align: left; }
+.bw-item .d { font-size: 14px; }
+.bw-item .v { font-size: 22px; }
+.bw-item .diff { font-size: 13px; color: var(--muted); text-align: right; font-family: var(--font-num); }
+.bw-link { min-height: var(--tap); display: inline-flex; align-items: center; font-size: 12px; color: var(--accent); }

@@ -1,7 +1,7 @@
 // データ層。画面のコードはこのファイルの関数だけを使って読み書きする。
 // 段階3ではここ(特に put / remove)に同期の処理を足す。
-import { openDb, SYNC_TABLES, IS_PREVIEW, migrateItem } from './schema.js';
-import { setEstimate1RM, trialStats, betterBest, bestSet } from '../domain/calc.js';
+import { openDb, SYNC_TABLES, IS_PREVIEW, migrateItem, migrateGoal } from './schema.js';
+import { setEstimate1RM, trialStats, betterBest, bestSet, goalProgress } from '../domain/calc.js';
 import { DEFAULT_REST_SEC } from '../domain/recordTypes.js';
 
 export { IS_PREVIEW };
@@ -502,6 +502,9 @@ export async function getLatestBodyweight(onOrBefore = localDate()) {
   const rows = await db.bodyweights.where('date').belowOrEqual(onOrBefore).reverse().toArray();
   return rows.find(alive) || null;
 }
+/** 体重の記録を消す(論理削除) */
+export function deleteBodyweight(id) { return remove('bodyweights', id); }
+
 export async function listBodyweights() {
   return (await db.bodyweights.orderBy('date').toArray()).filter(alive);
 }
@@ -536,10 +539,69 @@ export async function reorderGoals(ids) {
   }
 }
 export function getGoal(id) { return getAlive('goals', id); }
+/**
+ * 目標の保存(作成・上書き)。目標値・期限の上書きは「いまの目標」の訂正として扱い、履歴は増やさない。
+ * 手で入れたベストが変わったときは bestLog に記録を足す。
+ */
 export async function saveGoal(g) {
+  const prev = g.id ? await db.goals.get(g.id) : null;
+  g = migrateGoal({ ...g });
   // 新しい目標は一番下に足す
-  if (g.order == null) g = { ...g, order: (await listGoals()).reduce((m, x) => Math.max(m, x.order ?? 0), 0) + 1 };
+  if (g.order == null) g.order = (await listGoals()).reduce((m, x) => Math.max(m, x.order ?? 0), 0) + 1;
+  if (!prev) {
+    g.targets = [{ value: g.target ?? null, deadline: g.deadline ?? null, setOn: localDate(), endedOn: null, result: null }];
+    g.bestLog = [];
+  } else {
+    const cur = g.targets[g.targets.length - 1];
+    g.targets = [...g.targets.slice(0, -1), { ...cur, value: g.target ?? null, deadline: g.deadline ?? null }];
+  }
+  const mb = g.manualBest;
+  const pb = prev?.manualBest;
+  if (mb && mb.value != null && (!pb || pb.value !== mb.value || pb.date !== mb.date)) {
+    const entry = { value: mb.value, date: mb.date || localDate() };
+    g.bestLog = [...(g.bestLog || []).filter((x) => !(x.date === entry.date)), entry].sort((a, b) => a.date.localeCompare(b.date));
+  }
   return put('goals', g);
+}
+
+/**
+ * 次の目標を立てる。いまの目標を「達成」(ベストが届いていれば)か「変更」として閉じ、新しい目標値を履歴に足す。
+ */
+export async function setNextGoal(goalId, { target, deadline = null }) {
+  const g = migrateGoal(await db.goals.get(goalId));
+  const today = localDate();
+  const best = await getGoalBest(g);
+  const achieved = goalProgress(g, best, today).achieved;
+  const cur = g.targets[g.targets.length - 1];
+  const targets = [
+    ...g.targets.slice(0, -1),
+    { ...cur, endedOn: today, result: achieved ? 'achieved' : 'changed' },
+    { value: target, deadline, setOn: today, endedOn: null, result: null },
+  ];
+  return put('goals', { ...g, target, deadline, targets });
+}
+
+/**
+ * 目標の推移:目標値の履歴と、ベストの記録(日付順)
+ * bests: [{ date, value }](手入力のベスト・試技・推定1RM・体重から)
+ */
+export async function getGoalHistory(goal) {
+  const g = migrateGoal(goal);
+  const m = g.metric || { type: 'manual' };
+  let bests = (g.bestLog || []).map((x) => ({ date: x.date, value: x.value, source: 'manual' }));
+  if (m.type === 'trial' && m.exerciseId) {
+    for (const t of await listTrials(m.exerciseId)) {
+      const st = trialStats(t.attempts);
+      const v = m.stat === 'average' ? st.average : st.best;
+      if (v != null) bests.push({ date: t.date, value: v, source: 'record' });
+    }
+  } else if (m.type === 'e1rm' && m.exerciseId) {
+    for (const r of await getExerciseProgress(m.exerciseId)) bests.push({ date: r.date, value: r.score, source: 'record' });
+  } else if (m.type === 'bodyweight') {
+    bests = (await listBodyweights()).map((b) => ({ date: b.date, value: b.kg, source: 'record' }));
+  }
+  bests.sort((a, b) => a.date.localeCompare(b.date));
+  return { targets: g.targets, bests };
 }
 
 /** ホーム上部に表示する目標(複数可。左右のスワイプで切り替える) */
@@ -636,6 +698,10 @@ export async function importAll(data, { mode = 'merge' } = {}) {
   }
   if (data.schemaVersion > db.verno) {
     throw new Error('新しい版のアプリで書き出されたファイルです。アプリを更新してください');
+  }
+  // 古い版のファイルは、目標をいまの形に直してから読み込む
+  if ((data.schemaVersion || 1) < 3 && Array.isArray(data.tables.goals)) {
+    data = { ...data, tables: { ...data.tables, goals: data.tables.goals.map((g) => migrateGoal(g)) } };
   }
   // 古い版のファイルは、ルーティンをいまの形に直してから読み込む
   if ((data.schemaVersion || 1) < 2 && Array.isArray(data.tables.routines)) {
