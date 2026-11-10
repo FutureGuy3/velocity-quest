@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>計算のテスト</title>
+<style>
+  body { background:#0B0B0C; color:#F4F4F5; font-family: system-ui, sans-serif; padding:16px; font-size:14px; }
+  h1 { font-size:18px; }
+  .ok { color:#3DDC97; } .ng { color:#F87171; }
+  li { margin:4px 0; word-break: break-all; }
+  #summary { font-size:20px; font-weight:700; margin:12px 0; }
+</style>
+</head>
+<body>
+<h1>calc.js のテスト</h1>
+<div id="summary">実行中…</div>
+<ul id="list"></ul>
+<script type="module">
+import * as c from '../js/domain/calc.js';
+
+const results = [];
+function eq(name, actual, expected) {
+  const pass = JSON.stringify(actual) === JSON.stringify(expected);
+  results.push({ name, pass, actual, expected });
+}
+
+// 合計の重さ
+eq('合計:バー15 + 片側30×2 = 75', c.totalWeight({ bar: 15, platePerSide: 30 }), 75);
+eq('合計:小数 20 + 1.25×2 = 22.5', c.totalWeight({ bar: 20, platePerSide: 1.25 }), 22.5);
+eq('合計:プレートなし = バーのみ', c.totalWeight({ bar: 20, platePerSide: '' }), 20);
+eq('合計:どちらも空 = null', c.totalWeight({ bar: '', platePerSide: '' }), null);
+
+// 実負荷
+eq('実負荷:加重懸垂 体重68 + 10 = 78', c.effectiveLoad('bw_plus', { added: 10 }, 68), 78);
+eq('実負荷:アシスト 体重68 − 20 = 48', c.effectiveLoad('bw_minus', { assist: 20 }, 68), 48);
+eq('実負荷:体重がなければ null', c.effectiveLoad('bw_plus', { added: 10 }, null), null);
+eq('実負荷:重さ×回数はそのまま', c.effectiveLoad('weight_reps', { weight: 75 }), 75);
+
+// 推定1RM
+eq('推定1RM:100kg×5 = 116.7', c.estimate1RM(100, 5), 116.7);
+eq('推定1RM:75kg×10 = 100', c.estimate1RM(75, 10), 100);
+eq('推定1RM:11回は使わない', c.estimate1RM(60, 11), null);
+eq('推定1RM:0回は null', c.estimate1RM(60, 0), null);
+eq('推定1RM:加重懸垂は体重+加重 (68+10)×3 = 85.8',
+  c.setEstimate1RM('bw_plus', { added: 10, reps: 3, sideMode: 'both' }, 68), 85.8);
+eq('推定1RM:左右別は良い方',
+  c.setEstimate1RM('weight_reps', { sideMode: 'split', left: { weight: 40, reps: 8 }, right: { weight: 40, reps: 7 } }), 50.7);
+
+// 体重比
+eq('体重比:78 ÷ 68 = 1.15', c.bodyweightRatio(78, 68), 1.15);
+eq('体重比:体重なしは null', c.bodyweightRatio(78, null), null);
+
+// 自己ベスト
+const sets = [
+  { id: 'w', warmup: true, weight: 100, reps: 5, sideMode: 'both' },
+  { id: 'a', weight: 75, reps: 5, sideMode: 'both' },
+  { id: 'b', weight: 85, reps: 3, sideMode: 'both' },
+  { id: 'c', weight: 90, reps: 12, sideMode: 'both' },
+];
+eq('自己ベスト:ウォームアップと11回以上を除き推定1RMが最大', c.bestSet('weight_reps', sets)?.set.id, 'b');
+eq('自己ベスト:回数のみは最大回数', c.bestSet('reps', [{ reps: 8 }, { reps: 12 }, { reps: 10 }])?.set.reps, 12);
+
+// 試技
+const t = c.trialStats([{ value: 2.62 }, { value: 2.70 }, { value: 2.9, foul: true }, { value: 2.66 }, { value: 2.64 }]);
+eq('試技:最高(ファウルは除く)', t.best, 2.7);
+eq('試技:平均はファウルを除く 4本', t.average, 2.655);
+eq('試技:有効本数', t.validCount, 4);
+eq('試技:全部ファウル', c.trialStats([{ value: 1, foul: true }]).best, null);
+
+// 目標
+eq('日数:11/8 → 2027/2/28 = 112日', c.daysBetween('2026-11-08', '2027-02-28'), 112);
+const g1 = c.goalProgress({ target: 30.0, direction: 'lower', deadline: '2027-02-28' }, { value: 30.42, date: '2026-10-01' }, '2026-11-08');
+eq('目標:タイム あと0.42秒', g1.remaining, 0.42);
+eq('目標:期限まで112日', g1.daysLeft, 112);
+const g2 = c.goalProgress({ target: 3.0, direction: 'higher' }, { value: 2.7, date: '2026-11-05' }, '2026-11-08');
+eq('目標:立ち幅跳び あと0.3m', g2.remaining, 0.3);
+eq('目標:進み具合 90%', g2.progress, 0.9);
+eq('目標:達成済みは あと0', c.goalProgress({ target: 30, direction: 'lower' }, { value: 29.9 }, '2026-11-08').remaining, 0);
+eq('目標:ベストなし', c.goalProgress({ target: 30, direction: 'lower' }, null, '2026-11-08').remaining, null);
+eq('ベスト比較:タイムは小さい方', c.betterBest({ value: 30.42, date: '2026-10-01' }, { value: 30.1, date: '2026-11-01' }, 'lower').value, 30.1);
+eq('ベスト比較:片方だけ', c.betterBest(null, { value: 2.7, date: '2026-11-05' }).value, 2.7);
+
+// 入力の読み取り
+eq('読み取り:68.4', c.parseNumber('68.4'), 68.4);
+eq('読み取り:全角とカンマ 68,4', c.parseNumber('６８,４'), 68.4);
+eq('読み取り:文字は null', c.parseNumber('abc'), null);
+eq('読み取り:空は null', c.parseNumber(''), null);
+eq('読み取り:分:秒 1:02.34 = 62.34', c.parseNumber('1:02.34', { allowClock: true }), 62.34);
+eq('読み取り:分:秒を許さないときは null', c.parseNumber('1:02.34'), null);
+eq('読み取り:秒が60以上は null', c.parseNumber('1:75', { allowClock: true }), null);
+eq('秒の表示:30.42', c.formatSeconds(30.42), '30.42');
+eq('秒の表示:62.34 = 1:02.34', c.formatSeconds(62.34), '1:02.34');
+eq('秒の表示:30 = 30.00', c.formatSeconds(30), '30.00');
+
+// 表示
+eq('時計:134秒 = 2:14', c.formatClock(134), '2:14');
+eq('経過:42分15秒', c.formatElapsed((42 * 60 + 15) * 1000), '00:42:15');
+
+const list = document.getElementById('list');
+let ng = 0;
+for (const r of results) {
+  const li = document.createElement('li');
+  li.className = r.pass ? 'ok' : 'ng';
+  li.textContent = (r.pass ? '○ ' : '× ') + r.name + (r.pass ? '' : `(結果 ${JSON.stringify(r.actual)} / 期待 ${JSON.stringify(r.expected)})`);
+  list.appendChild(li);
+  if (!r.pass) ng++;
+}
+const sum = document.getElementById('summary');
+sum.textContent = ng ? `${ng} 件 失敗 / ${results.length} 件` : `すべて成功(${results.length} 件)`;
+sum.className = ng ? 'ng' : 'ok';
+document.title = ng ? 'NG' : 'OK';
+</script>
+</body>
+</html>
