@@ -95,18 +95,19 @@ async function getAlive(table, id) {
 
 /** filter: { bodyPart, equipment, q, includeHidden } */
 export async function listExercises(filter = {}) {
-  const { bodyPart, equipment, q, swim, includeHidden = false } = filter;
+  const { bodyPart, equipment, q, swim, favorite, includeHidden = false } = filter;
   let rows = await db.exercises.toArray();
   rows = rows.filter(alive);
   if (!includeHidden) rows = rows.filter((r) => !r.hidden);
   if (bodyPart) rows = rows.filter((r) => r.bodyPart === bodyPart);
   if (equipment) rows = rows.filter((r) => r.equipment === equipment);
   if (swim) rows = rows.filter((r) => (r.swim || []).includes(swim));
+  if (favorite) rows = rows.filter((r) => r.favorite);
   if (q) {
     const needle = normalize(q);
     rows = rows.filter((r) => normalize(r.name).includes(needle));
   }
-  rows.sort((a, b) => (b.starred === true) - (a.starred === true) || (a.order ?? 0) - (b.order ?? 0));
+  rows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   return rows;
 }
 
@@ -127,6 +128,13 @@ export async function getExerciseMap() {
 
 export function saveExercise(ex) {
   return put('exercises', { builtin: false, hidden: false, subParts: [], ...ex });
+}
+
+/** お気に入りの付け外し */
+export async function setExerciseFavorite(id, favorite) {
+  const ex = await db.exercises.get(id);
+  if (!ex) return null;
+  return put('exercises', { ...ex, favorite });
 }
 
 export async function setExerciseHidden(id, hidden) {
@@ -338,6 +346,46 @@ export async function addSet(workout, item, { warmup = false } = {}) {
     order, warmup, sideMode: item.sideMode || 'both', restSec: prev?.restSec ?? item.restSec ?? null,
     ...pickValues(prev), face: null, memo: '', done: false,
   });
+}
+
+/**
+ * トレーニング中に種目を別の種目に変える(マシンが空いていないときなど)。
+ * まだ完了したセットがなければ、その場で入れ替える(セット数・回数・休憩・ウォームアップは残し、重さなどは新しい種目の前回の値)。
+ * 完了したセットがあれば、完了した分は元の種目の記録として残し、残りのセットを新しい種目としてすぐ後ろに入れる。
+ */
+export async function changeWorkoutItemExercise(workout, itemKey, newExerciseId) {
+  const w = await getWorkout(workout.id);
+  const idx = w.items.findIndex((x) => x.key === itemKey);
+  if (idx < 0) return w;
+  const old = w.items[idx];
+  const exNew = await getExercise(newExerciseId);
+  if (!exNew) return w;
+  const mine = (await listSets(w.id)).filter((x) => x.itemKey === itemKey);
+  const done = mine.filter((x) => x.done);
+  const undone = mine.filter((x) => !x.done);
+  const plans = undone.map((x) => {
+    const p = { warmup: !!x.warmup, restSec: x.restSec ?? old.restSec ?? DEFAULT_REST_SEC };
+    if (exNew.recordType !== 'time' && exNew.recordType !== 'distance_band' && x.reps != null) p.reps = x.reps;
+    return p;
+  });
+  for (const x of undone) await remove('sets', x.id);
+  const startOrder = undone[0]?.order ?? (mine[mine.length - 1]?.order ?? 0) + 0.001;
+  const lastNew = await getLastSets(newExerciseId, { excludeWorkoutId: w.id });
+  const items = w.items.slice();
+  let item;
+  if (!done.length) {
+    item = { ...old, exerciseId: newExerciseId, sideMode: lastNew[0]?.sideMode || 'both' };
+    items[idx] = item;
+  } else {
+    item = { key: newId(), exerciseId: newExerciseId, restSec: old.restSec, pap: old.pap, link: old.link || null, sideMode: lastNew[0]?.sideMode || 'both' };
+    items[idx] = { ...old, link: null };
+    items.splice(idx + 1, 0, item);
+  }
+  if (exNew.recordType !== 'trials') {
+    const sets = await plannedSets(w, item, plans.length ? plans : null, startOrder, 1);
+    for (let i = 0; i < sets.length; i++) await put('sets', { ...sets[i], order: startOrder + i * 0.0001 });
+  }
+  return put('workouts', { ...w, items: normalizeLinks(items) });
 }
 
 /** 種目を練習から外す(その種目のセットと試技も論理削除) */

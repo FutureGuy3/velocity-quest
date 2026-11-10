@@ -11,6 +11,7 @@ import {
   getLastSets, getBestSet, addWorkoutItems, removeWorkoutItem, finishWorkout, deleteWorkout,
   workoutDiffersFromRoutine, applyWorkoutToRoutine, getWorkoutTrial, saveTrial,
   saveBodyweight, getActiveWorkout, listRoutines, startWorkout, normalizeLinks, LINK_TYPES,
+  changeWorkoutItemExercise,
 } from '../../db/repo.js';
 import {
   totalWeight, effectiveLoad, bodyweightRatio, formatElapsed, parseNumber, fmt, trialStats, round,
@@ -189,6 +190,7 @@ export async function renderWorkout({ params }) {
     actionSheet({
       title: ex?.name,
       actions: [
+        { label: '種目を変更する(マシンが空いていないときなど)', onSelect: () => changeExercise(it) },
         w.items.length > 1 && { label: '種目を並べ替える', onSelect: reorderItems },
         i < w.items.length - 1 && { label: it.link ? `つなぎを変える(今 ${LINK_TYPES[it.link.type]})` : '次の種目とつなぐ', onSelect: () => linkMenu(it, w.items[i + 1]) },
         { label: it.pap ? 'PAP を外す' : 'PAP にする(休憩3分)', onSelect: async () => { it.pap = !it.pap; await saveW(); redrawCard(it); } },
@@ -214,6 +216,25 @@ export async function renderWorkout({ params }) {
       },
     });
   }
+  function changeExercise(it) {
+    const doneCount = itemSets(it.key).filter((x) => x.done).length;
+    openPicker({
+      single: true,
+      title: '変更する種目を選ぶ',
+      context: `${nameOf(it)} から変更`,
+      onDone: async ([id]) => {
+        if (!id || id === it.exerciseId) return;
+        w = await changeWorkoutItemExercise(w, it.key, id);
+        exMap = await getExerciseMap();
+        sets = await listSets(w.id);
+        await loadInfo();
+        const newName = exMap.get(id)?.name;
+        toast(doneCount ? `完了した${doneCount}セットは${nameOf(it)}のまま残し、残りを${newName}にしました` : `${newName}に変更しました`);
+        draw(true);
+      },
+    });
+  }
+
   function reorderItems() {
     openReorder({
       title: '種目の並べ替え',

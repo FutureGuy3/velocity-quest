@@ -26,14 +26,39 @@ export async function renderRoutineEdit({ params }) {
   let dirty = false;
   const touch = () => { dirty = true; };
 
-  async function addExercises(ids) {
+  /** 種目を足す。at を渡すとその位置に入れる(省略で一番下) */
+  async function addExercises(ids, at = null) {
     exMap = await getExerciseMap();
-    for (const id of ids) {
-      const ex = exMap.get(id);
-      if (ex) st.items.push(newRoutineItem(ex));
+    const added = ids.map((id) => exMap.get(id)).filter(Boolean).map((ex) => newRoutineItem(ex));
+    if (at == null) st.items.push(...added);
+    else {
+      const prev = st.items[at - 1];
+      if (prev?.link) { prev.link = null; toast('つないでいた種目の間に入れたので、つなぎを外しました'); }
+      st.items.splice(at, 0, ...added);
     }
     touch();
     draw(true);
+  }
+
+  /** 種目を別の種目に変える(セット数・回数・休憩は残し、重さなどは空にして前回の値を使う) */
+  function changeExercise(it) {
+    openPicker({
+      single: true,
+      title: '変更する種目を選ぶ',
+      context: `${exMap.get(it.exerciseId)?.name ?? ''} から変更`,
+      onDone: async ([id]) => {
+        if (!id || id === it.exerciseId) return;
+        exMap = await getExerciseMap();
+        const ex = exMap.get(id);
+        if (!ex) return;
+        if (ex.recordType === 'trials') it.setPlans = [];
+        else if (!it.setPlans.length) it.setPlans = newRoutineItem(ex).setPlans;
+        else it.setPlans = it.setPlans.map((p) => ({ warmup: !!p.warmup, restSec: p.restSec, ...(p.reps != null && ex.recordType !== 'time' && ex.recordType !== 'distance_band' ? { reps: p.reps } : {}) }));
+        it.exerciseId = id;
+        toast(`${ex.name}に変更しました`);
+        touch(); draw(true);
+      },
+    });
   }
 
   async function onSave() {
@@ -82,6 +107,7 @@ export async function renderRoutineEdit({ params }) {
     actionSheet({
       title: ex?.name,
       actions: [
+        { label: '種目を変更する', onSelect: () => changeExercise(it) },
         ex?.recordType !== 'trials' && !it.pap && { label: '休憩をまとめて変える', onSelect: () => openRestPicker({
           title: `${ex?.name} のすべてのセットの休憩`, value: it.restSec,
           onDone: (s) => { it.restSec = s; it.setPlans.forEach((p) => { p.restSec = s; }); touch(); draw(true); },
@@ -113,10 +139,23 @@ export async function renderRoutineEdit({ params }) {
     if (it.link) {
       return h('li', { class: 'link-row' },
         h('button', { class: `link-chip ${it.link.type}`, type: 'button', onclick: pick, 'aria-label': `つなぎ:${LINK_TYPES[it.link.type]}(変更)` },
-          icon('link', 16), LINK_TYPES[it.link.type]));
+          icon('link', 16), LINK_TYPES[it.link.type]),
+        addHere(it));
     }
     return h('li', { class: 'link-row' },
-      h('button', { class: 'link-add', type: 'button', onclick: pick }, '+ 次の種目とつなぐ'));
+      h('button', { class: 'link-add', type: 'button', onclick: pick }, '+ 次の種目とつなぐ'),
+      addHere(it));
+  }
+
+  /** この位置(it のすぐ後ろ)に種目を足すボタン */
+  function addHere(it) {
+    return h('button', {
+      class: 'link-add', type: 'button',
+      onclick: () => openPicker({
+        context: `${exMap.get(it.exerciseId)?.name ?? ''} のあとに追加`,
+        onDone: (ids) => addExercises(ids, st.items.indexOf(it) + 1),
+      }),
+    }, '+ 種目を追加');
   }
 
   /* ---------- セットごとの予定 ---------- */

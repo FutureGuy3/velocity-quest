@@ -45,7 +45,7 @@ export async function seedIfNeeded() {
       unit: e.unit ?? null,
       swim: e.swim || [],
       gearId: GEAR_BY_EQUIPMENT[e.equipment] ?? null,
-      starred: !!e.starred,
+      favorite: false,
       hidden: false,
       builtin: true,
       order: i,

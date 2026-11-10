@@ -28,9 +28,9 @@ export async function openExerciseForm({ exercise = null, defaults = {}, onSaved
     increment: exercise?.increment != null ? String(exercise.increment) : '2.5',
     restSec: exercise?.restSec ?? DEFAULT_REST_SEC,
     swim: [...(exercise?.swim ?? defaults.swim ?? [])],
+    favorite: exercise?.favorite ?? defaults.favorite ?? false,
     gearId: exercise?.gearId ?? '',
     unit: exercise?.unit ?? 'cm',
-    starred: exercise?.starred ?? false,
     hidden: exercise?.hidden ?? false,
   };
 
@@ -73,7 +73,7 @@ export async function openExerciseForm({ exercise = null, defaults = {}, onSaved
           usesWeight ? field('重さの刻み(kg)', h('input', { id: 'ex-inc', class: 'input num-input', inputmode: 'decimal', value: st.increment, oninput: (e) => { st.increment = e.target.value; } }),
             '重さのボタン(−/+)が、この刻みで増減します。') : null,
           sw('片側で行える', 'unilateral'),
-          sw('よく使う(一覧の上に出す)', 'starred'),
+          sw('お気に入り', 'favorite'),
           !isNew ? sw('非表示にする', 'hidden') : null,
           h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, isNew ? '登録する' : '保存'),
           !isNew && !exercise.builtin
@@ -102,7 +102,7 @@ export async function openExerciseForm({ exercise = null, defaults = {}, onSaved
       restSec: Number(st.restSec),
       gearId: st.recordType === 'weight_reps' ? (st.gearId || null) : null,
       unit: st.recordType === 'trials' ? st.unit : null,
-      starred: st.starred,
+      favorite: st.favorite,
       swim: st.swim,
       hidden: st.hidden,
       order: exercise?.order ?? 10000,

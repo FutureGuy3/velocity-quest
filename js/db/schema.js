@@ -44,6 +44,14 @@ export function openDb() {
     await tx.table('goals').toCollection().modify((g) => { Object.assign(g, migrateGoal(g)); });
   });
 
+  // 版4:最初から付いていた「よく使う」(starred)をやめ、利用者が自分で付ける「お気に入り」(favorite)にする
+  db.version(4).stores({}).upgrade(async (tx) => {
+    await tx.table('exercises').toCollection().modify((e) => {
+      e.favorite = false;
+      delete e.starred;
+    });
+  });
+
   return db;
 }
 
