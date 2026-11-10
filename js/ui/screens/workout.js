@@ -5,7 +5,7 @@ import { openPicker } from '../components/picker.js';
 import { actionSheet } from '../components/overlay.js';
 import { createRestTimer, unlockAudio } from '../components/restTimer.js';
 import { keepScreenOn, allowScreenOff } from '../components/wakeLock.js';
-import { REST_OPTIONS, restLabel } from '../components/exerciseForm.js';
+import { openValuePad, openRestPicker, cellButton, stepsFor, restText } from '../components/pads.js';
 import {
   getWorkout, saveWorkout, listSets, saveSet, deleteSet, addSet, getExerciseMap, getGear,
   getLastSets, getBestSet, addWorkoutItems, removeWorkoutItem, finishWorkout, deleteWorkout,
@@ -15,9 +15,10 @@ import {
 import {
   totalWeight, effectiveLoad, bodyweightRatio, formatElapsed, parseNumber, fmt, trialStats, round,
 } from '../../domain/calc.js';
-import { recordTypeLabel, SIDE_MODES, FACES, PAP_REST_SEC } from '../../domain/recordTypes.js';
+import { recordTypeLabel, SIDE_MODES, FACES, PAP_REST_SEC, DEFAULT_REST_SEC } from '../../domain/recordTypes.js';
 import { FIELD_META, TYPE_FIELDS, formatSet, summarizeSets } from '../setFormat.js';
 import { navigate, back } from '../../router.js';
+import { choosePreset } from './home.js';
 
 /* ======================= #/workout(開始画面) ======================= */
 
@@ -31,7 +32,10 @@ export async function renderWorkoutStart() {
   };
   mount(h('div', {},
     h('header', { class: 'topbar' }, h('div', { class: 'topbar-title' }, h('h1', { class: 'topbar-h' }, 'トレーニング'))),
-    h('div', { class: 'section-head', style: { paddingTop: '8px' } }, h('h2', {}, 'ルーティンから開始'), h('a', { href: '#/routine/new' }, '+ 新規作成')),
+    h('div', { class: 'section-head', style: { paddingTop: '8px' } }, h('h2', {}, 'ルーティンから開始'),
+      h('div', { style: { display: 'flex', gap: '16px' } },
+        h('button', { class: 'link-btn', type: 'button', onclick: choosePreset }, 'プリセット'),
+        h('a', { href: '#/routine/new' }, '+ 新規作成'))),
     h('div', { class: 'stack' },
       routines.length ? routines.map((r) => h('div', { class: 'routine-row' },
         h('a', { class: 'info', href: `#/routine/${r.id}` },
@@ -101,7 +105,7 @@ export async function renderWorkout({ params }) {
 
   /* ---------- 共通 ---------- */
   const itemSets = (key) => sets.filter((x) => x.itemKey === key);
-  const restOf = (it) => (it.pap ? PAP_REST_SEC : (it.restSec ?? exMap.get(it.exerciseId)?.restSec ?? 90));
+  const restOf = (it) => (it.pap ? PAP_REST_SEC : (it.restSec ?? DEFAULT_REST_SEC));
 
   function pickActive(it) {
     const mine = itemSets(it.key);
@@ -188,7 +192,7 @@ export async function renderWorkout({ params }) {
         w.items.length > 1 && { label: '種目を並べ替える', onSelect: reorderItems },
         i < w.items.length - 1 && { label: it.link ? `つなぎを変える(今 ${LINK_TYPES[it.link.type]})` : '次の種目とつなぐ', onSelect: () => linkMenu(it, w.items[i + 1]) },
         { label: it.pap ? 'PAP を外す' : 'PAP にする(休憩3分)', onSelect: async () => { it.pap = !it.pap; await saveW(); redrawCard(it); } },
-        !it.pap && { label: `休憩の初期値を変える(今 ${restLabel(restOf(it))})`, onSelect: () => restMenu(it) },
+        !it.pap && { label: `休憩を変える(今 ${restText(restOf(it))})`, onSelect: () => restMenu(it) },
         { label: 'この種目を外す', danger: true, onSelect: async () => {
           if (!confirm(`「${ex?.name}」を外しますか?入力したセットも消えます。`)) return;
           if (i > 0 && w.items[i - 1].link) { w.items[i - 1].link = null; await saveW(); }
@@ -200,9 +204,14 @@ export async function renderWorkout({ params }) {
     });
   }
   function restMenu(it) {
-    actionSheet({
-      title: '休憩の初期値',
-      actions: REST_OPTIONS.map((s) => ({ label: restLabel(s), onSelect: async () => { it.restSec = s; await saveW(); redrawCard(it); } })),
+    openRestPicker({
+      title: `${nameOf(it)} の休憩(まだ完了していないセット)`, value: restOf(it),
+      onDone: async (s) => {
+        it.restSec = s;
+        await saveW();
+        for (const x of itemSets(it.key).filter((x) => !x.done)) { x.restSec = s; await saveSet(x); }
+        redrawCard(it);
+      },
     });
   }
   function reorderItems() {
@@ -259,18 +268,30 @@ export async function renderWorkout({ params }) {
   function valueInput(it, set, field, side = null) {
     const meta = FIELD_META[field];
     const target = side ? (set[side] = set[side] || {}) : set;
-    const v = target[field];
-    return h('input', {
-      class: `cell-input${meta.mode === 'text' ? ' text' : ''}`,
-      inputmode: meta.mode === 'text' ? 'text' : meta.mode,
-      value: v == null ? '' : String(v),
-      placeholder: '—',
-      'aria-label': `${side === 'left' ? '左 ' : side === 'right' ? '右 ' : ''}${meta.label}`,
-      onfocus: () => { if (activeSet.get(it.key) !== set.id) { activeSet.set(it.key, set.id); markActive(it); } },
-      oninput: (e) => {
-        target[field] = meta.mode === 'text' ? e.target.value : parseNumber(e.target.value);
-        scheduleSave(set);
-        derivedFns.get(it.key)?.();
+    const label = `${side === 'left' ? '左 ' : side === 'right' ? '右 ' : ''}${meta.label}`;
+    const activate = () => { if (activeSet.get(it.key) !== set.id) { activeSet.set(it.key, set.id); markActive(it); } };
+    if (meta.mode === 'text') {
+      return h('input', {
+        class: 'cell-input text', value: target[field] ?? '', placeholder: '—', 'aria-label': label,
+        onfocus: activate,
+        oninput: (e) => { target[field] = e.target.value; scheduleSave(set); },
+      });
+    }
+    const ex = exMap.get(it.exerciseId);
+    return cellButton({
+      value: target[field], label,
+      onOpen: (btn) => {
+        activate();
+        // 空の欄は、このセットの前のセット(なければ前回の記録)の値から始める
+        const mine = itemSets(it.key);
+        const before = mine.slice(0, mine.indexOf(set)).reverse().find((x) => (side ? x[side]?.[field] : x[field]) != null);
+        const lastRec = (info.get(it.exerciseId)?.last || []).find((x) => x[field] != null);
+        const start = before ? (side ? before[side][field] : before[field]) : lastRec?.[field] ?? null;
+        openValuePad({
+          title: `${ex?.name ?? ''} · セット ${setLabel(it, set)} · ${label}`,
+          value: target[field], start, steps: stepsFor(field, ex?.increment), anchor: btn,
+          onChange: (v) => { target[field] = v; btn.setValue(v); scheduleSave(set); derivedFns.get(it.key)?.(); },
+        });
       },
     });
   }
@@ -328,7 +349,7 @@ export async function renderWorkout({ params }) {
         h('h3', {}, ex?.name ?? '(削除された種目)'),
         h('span', { class: 'meta' }, meta, extraMeta ? ` · ${extraMeta}` : ''),
         h('span', { class: 'tags' },
-          it.pap ? h('span', { class: 'tag-mini accent' }, 'PAP 3分') : h('span', { class: 'tag-mini' }, `休憩 ${restLabel(restOf(it))}`)),
+          it.pap ? h('span', { class: 'tag-mini accent' }, 'PAP 3分') : h('span', { class: 'tag-mini' }, `休憩 ${restText(restOf(it))}`)),
         linkBanner(it, i)),
       h('button', { class: 'icon-btn', type: 'button', 'aria-label': `${ex?.name ?? ''}のメニュー`, onclick: () => itemMenu(it, i) }, icon('more')));
   }
@@ -431,25 +452,30 @@ export async function renderWorkout({ params }) {
   function breakdownBox(it, set, src, bar, plate, split) {
     const ex = exMap.get(it.exerciseId);
     const inc = ex.increment || 2.5;
-    const plateInput = h('input', {
-      class: 'cell-input', inputmode: 'decimal', value: plate == null ? '' : String(plate), placeholder: '0', 'aria-label': 'プレート片側 kg',
-      oninput: (e) => { const p = parseNumber(e.target.value); applyPlate(p); },
+    let plateVal = plate;
+    const plateInput = cellButton({
+      value: plate, placeholder: '0', label: 'プレート片側 kg',
+      onOpen: (btn) => openValuePad({
+        title: `${ex.name} · プレート片側(×2 で合計)`, unit: 'kg', value: plateVal, start: 0,
+        steps: stepsFor('platePerSide', inc / 2),
+        onChange: (v) => { btn.setValue(v); applyPlate(v); },
+      }),
     });
     const totalEl = h('span', { class: 'num big' }, src.weight != null ? `${fmt(src.weight)}kg` : '—');
     function applyPlate(p) {
+      plateVal = p;
       const total = p == null ? null : totalWeight({ bar, platePerSide: p });
       src.weight = total;
       src.breakdown = p == null ? null : { bar, platePerSide: p };
       scheduleSave(set);
       totalEl.textContent = total != null ? `${fmt(total)}kg` : '—';
       const row = cardEls.get(it.key)?.querySelector(`.set-row[data-id="${set.id}"]`);
-      const inp = row?.querySelector(split ? '.split-line input' : 'input.cell-input');
-      if (inp) inp.value = total == null ? '' : String(total);
+      const cell = row?.querySelector('.cell-btn');
+      cell?.setValue(total);
     }
     const step = (d) => {
-      const cur = parseNumber(plateInput.value) ?? 0;
-      const p = Math.max(0, round(cur + d * inc / 2, 2));
-      plateInput.value = String(p);
+      const p = Math.max(0, round((plateVal ?? 0) + d * inc / 2, 2));
+      plateInput.setValue(p);
       applyPlate(p);
     };
     return h('div', { class: 'calc-box', role: 'group', 'aria-label': '重さの内訳' },

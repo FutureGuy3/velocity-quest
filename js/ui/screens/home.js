@@ -9,6 +9,24 @@ import {
 } from '../../db/repo.js';
 import { goalTexts } from '../goalFormat.js';
 import { navigate } from '../../router.js';
+import { actionSheet } from '../components/overlay.js';
+import { PRESETS } from '../../domain/presets.js';
+import { createRoutineFromPreset } from '../../db/repo.js';
+
+/** 水泳選手向けのプリセットから、ルーティンを作って編集画面を開く */
+export function choosePreset() {
+  actionSheet({
+    title: 'プリセットからルーティンを作ります(作ったあと自由に直せます)',
+    actions: PRESETS.map((p) => ({
+      label: `${p.name}:${p.note}`,
+      onSelect: async () => {
+        const r = await createRoutineFromPreset(p);
+        toast(`「${p.name}」を作りました`);
+        navigate(`/routine/${r.id}`);
+      },
+    })),
+  });
+}
 
 export async function renderHome() {
   const today = localDate();
@@ -31,7 +49,9 @@ export async function renderHome() {
 
     h('div', { class: 'section-head' },
       h('h2', {}, 'ルーティン'),
-      h('a', { href: '#/routine/new' }, '+ 新規作成')),
+      h('div', { style: { display: 'flex', gap: '16px' } },
+        h('button', { class: 'link-btn', type: 'button', onclick: choosePreset }, 'プリセット'),
+        h('a', { href: '#/routine/new' }, '+ 新規作成'))),
     h('div', { class: 'stack' },
       routines.length
         ? routines.map((r) => routineRow(r, lastDates.get(r.id), active))

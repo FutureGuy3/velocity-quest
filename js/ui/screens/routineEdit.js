@@ -4,13 +4,12 @@ import { h, icon, mount, toast } from '../dom.js';
 import { openPicker } from '../components/picker.js';
 import { openReorder } from '../components/reorder.js';
 import { actionSheet } from '../components/overlay.js';
-import { REST_OPTIONS, restLabel } from '../components/exerciseForm.js';
+import { openValuePad, openRestPicker, cellButton, stepsFor, restShort } from '../components/pads.js';
 import {
   getRoutine, saveRoutine, deleteRoutine, listRoutines, getExerciseMap, newRoutineItem,
   normalizeLinks, LINK_TYPES,
 } from '../../db/repo.js';
 import { recordTypeLabel, PAP_REST_SEC } from '../../domain/recordTypes.js';
-import { parseNumber } from '../../domain/calc.js';
 import { FIELD_META, TYPE_FIELDS } from '../setFormat.js';
 import { back } from '../../router.js';
 
@@ -83,9 +82,9 @@ export async function renderRoutineEdit({ params }) {
     actionSheet({
       title: ex?.name,
       actions: [
-        ex?.recordType !== 'trials' && !it.pap && { label: '休憩をまとめて変える', onSelect: () => actionSheet({
-          title: 'すべてのセットの休憩',
-          actions: REST_OPTIONS.map((s) => ({ label: restLabel(s), onSelect: () => { it.restSec = s; it.setPlans.forEach((p) => { p.restSec = s; }); touch(); draw(true); } })),
+        ex?.recordType !== 'trials' && !it.pap && { label: '休憩をまとめて変える', onSelect: () => openRestPicker({
+          title: `${ex?.name} のすべてのセットの休憩`, value: it.restSec,
+          onDone: (s) => { it.restSec = s; it.setPlans.forEach((p) => { p.restSec = s; }); touch(); draw(true); },
         }) },
         { label: 'この種目を外す', danger: true, onSelect: () => {
           if (i > 0 && st.items[i - 1].link) st.items[i - 1].link = null;
@@ -130,10 +129,18 @@ export async function renderRoutineEdit({ params }) {
       h('span', {}, '休憩'));
     const rows = it.setPlans.map((p, k) => {
       const label = p.warmup ? 'W' : String(++n);
-      const rest = h('select', {
-        class: 'select plan-rest', 'aria-label': `セット ${label} の休憩`, disabled: it.pap && !p.warmup,
-        onchange: (e) => { p.restSec = Number(e.target.value); touch(); },
-      }, REST_OPTIONS.map((s) => h('option', { value: s, selected: s === (p.restSec ?? it.restSec) }, restLabel(s))));
+      const papFixed = it.pap && !p.warmup;
+      const rest = h('button', {
+        type: 'button', class: 'cell-btn rest-btn', 'aria-label': `セット ${label} の休憩 ${restShort(p.restSec ?? it.restSec)}`,
+        disabled: papFixed,
+        onclick: (e) => {
+          const btn = e.currentTarget;
+          openRestPicker({
+            title: `${ex.name} · セット ${label} のあとの休憩`, value: p.restSec ?? it.restSec,
+            onDone: (s) => { p.restSec = s; btn.textContent = restShort(s); touch(); },
+          });
+        },
+      }, restShort(papFixed ? PAP_REST_SEC : (p.restSec ?? it.restSec)));
       return h('div', { class: `plan-row cols-${fields.length}${p.warmup ? ' warm' : ''}` },
         h('button', {
           class: 'set-label', type: 'button', 'aria-label': `セット ${label} のメニュー`,
@@ -145,12 +152,23 @@ export async function renderRoutineEdit({ params }) {
             ],
           }),
         }, label),
-        fields.map((f) => h('input', {
-          class: `cell-input${FIELD_META[f].mode === 'text' ? ' text' : ''}`,
-          inputmode: FIELD_META[f].mode === 'text' ? 'text' : FIELD_META[f].mode,
-          value: p[f] ?? '', placeholder: '—', 'aria-label': `セット ${label} の${FIELD_META[f].label}`,
-          oninput: (e) => { p[f] = FIELD_META[f].mode === 'text' ? e.target.value : parseNumber(e.target.value); touch(); },
-        })),
+        fields.map((f) => (FIELD_META[f].mode === 'text'
+          ? h('input', {
+            class: 'cell-input text', value: p[f] ?? '', placeholder: '—', 'aria-label': `セット ${label} の${FIELD_META[f].label}`,
+            oninput: (e) => { p[f] = e.target.value; touch(); },
+          })
+          : cellButton({
+            value: p[f], label: `セット ${label} の${FIELD_META[f].label}`,
+            onOpen: (btn) => {
+              // 空の欄は、前のセットの値から始める
+              const prev = it.setPlans.slice(0, k).reverse().find((x) => x[f] != null);
+              openValuePad({
+                title: `${ex.name} · セット ${label} · ${FIELD_META[f].label}`,
+                value: p[f], start: prev?.[f] ?? null, steps: stepsFor(f, ex.increment), anchor: btn,
+                onChange: (v) => { p[f] = v; btn.setValue(v); touch(); },
+              });
+            },
+          }))),
         rest);
     });
     const copyLast = (warmup) => {

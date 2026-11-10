@@ -25,6 +25,12 @@ export const SIDE_MODES = {
 };
 
 export const BODY_PARTS = ['胸', '背中', '肩', '腕', '脚', '臀部', '体幹', 'プライオ', 'ケア'];
+
+/** 水泳の目的(部位とは別のしるし。1つの種目に複数付けられる) */
+export const SWIM_TAGS = { start: 'スタート強化', turn: 'ターン強化', pull: 'プル強化', kick: 'キック強化' };
+
+/** 休憩の既定値(秒)。種目を足したときはこの値から始める */
+export const DEFAULT_REST_SEC = 60;
 export const EQUIPMENT = ['スミス', 'バーベル', 'ダンベル', 'ケーブル', 'マシン', 'ケトルベル', '自重', 'バンド', 'その他'];
 
 /** 感触(顔5段階) */

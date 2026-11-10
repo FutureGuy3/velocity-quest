@@ -2,6 +2,7 @@
 // 段階3ではここ(特に put / remove)に同期の処理を足す。
 import { openDb, SYNC_TABLES, IS_PREVIEW, migrateItem } from './schema.js';
 import { setEstimate1RM, trialStats, betterBest, bestSet } from '../domain/calc.js';
+import { DEFAULT_REST_SEC } from '../domain/recordTypes.js';
 
 export { IS_PREVIEW };
 
@@ -13,6 +14,7 @@ let deviceId = null;
 
 export const DEFAULT_SETTINGS = Object.freeze({
   accent: '#FF6A1A',
+  trackedExercises: [], // 指標で推移を見る種目の id
 });
 
 /* ===================== 起動 ===================== */
@@ -93,12 +95,13 @@ async function getAlive(table, id) {
 
 /** filter: { bodyPart, equipment, q, includeHidden } */
 export async function listExercises(filter = {}) {
-  const { bodyPart, equipment, q, includeHidden = false } = filter;
+  const { bodyPart, equipment, q, swim, includeHidden = false } = filter;
   let rows = await db.exercises.toArray();
   rows = rows.filter(alive);
   if (!includeHidden) rows = rows.filter((r) => !r.hidden);
   if (bodyPart) rows = rows.filter((r) => r.bodyPart === bodyPart);
   if (equipment) rows = rows.filter((r) => r.equipment === equipment);
+  if (swim) rows = rows.filter((r) => (r.swim || []).includes(swim));
   if (q) {
     const needle = normalize(q);
     rows = rows.filter((r) => normalize(r.name).includes(needle));
@@ -161,13 +164,28 @@ export function deleteRoutine(id) { return remove('routines', id); }
 
 /** ルーティンの並び要素を作る */
 export function newRoutineItem(ex) {
-  const rest = ex.restSec ?? 90;
+  const rest = DEFAULT_REST_SEC;
   const field = ex.recordType === 'time' ? 'seconds' : ex.recordType === 'distance_band' ? 'distance' : 'reps';
   const plan = () => (ex.recordType === 'trials' ? { warmup: false, restSec: rest } : { warmup: false, restSec: rest, [field]: field === 'reps' ? 5 : null });
   return {
     key: newId(), exerciseId: ex.id, restSec: rest, pap: false, link: null,
     setPlans: ex.recordType === 'trials' ? [] : [plan(), plan(), plan()],
   };
+}
+
+/** プリセットからルーティンを作る(作ったものは普通のルーティンとして直せる) */
+export async function createRoutineFromPreset(preset) {
+  const exMap = await getExerciseMap();
+  const items = preset.items.filter((p) => exMap.has(p.ex)).map((p) => ({
+    key: newId(), exerciseId: p.ex, restSec: DEFAULT_REST_SEC, pap: !!p.pap, link: null, linkNext: p.linkNext || null,
+    setPlans: p.sets.map((x) => ({ ...x })),
+  }));
+  items.forEach((it, i) => {
+    if (it.linkNext && items[i + 1]) it.link = { type: it.linkNext, toKey: items[i + 1].key };
+    delete it.linkNext;
+  });
+  const order = (await listRoutines()).length + 1;
+  return put('routines', { name: preset.name, items, order, presetId: preset.id });
 }
 
 /** 種目のつなぎの種類 */
@@ -301,7 +319,7 @@ export async function addWorkoutItems(workoutId, exerciseIds) {
     const ex = exMap.get(id);
     if (!ex) continue;
     const last = await getLastSets(id, { excludeWorkoutId: w.id });
-    const item = { key: newId(), exerciseId: id, restSec: ex.restSec ?? 90, pap: false, link: null, sideMode: last[0]?.sideMode || 'both' };
+    const item = { key: newId(), exerciseId: id, restSec: DEFAULT_REST_SEC, pap: false, link: null, sideMode: last[0]?.sideMode || 'both' };
     items.push(item);
     if (ex.recordType === 'trials') continue;
     for (const st of await plannedSets(w, item, null, order, 1)) { await put('sets', st); order++; }
@@ -429,11 +447,46 @@ export async function getBestSet(exerciseId, recordType, { excludeWorkoutId = nu
   const sets = (await listSetsForExercise(exerciseId)).filter((x) => x.workoutId !== excludeWorkoutId);
   if (!sets.length) return null;
   const bws = await listBodyweights();
-  const bwOn = (date) => { let v = null; for (const b of bws) { if (b.date <= date) v = b.kg; else break; } return v; };
+  const bwOn = (date) => bodyweightNear(bws, date);
   return bestSet(recordType, sets, (x) => bwOn(x.date));
 }
 
+/**
+ * 種目の推移:練習ごとのベスト(本番のセットのうち「良さ」が最大のもの)を日付の古い順に返す
+ * [{ date, workoutId, set, score }]
+ */
+export async function getExerciseProgress(exerciseId) {
+  const ex = await getExercise(exerciseId) || (await db.exercises.get(exerciseId));
+  if (!ex) return [];
+  const sets = (await listSetsForExercise(exerciseId)).filter((x) => !x.warmup);
+  const bws = await listBodyweights();
+  const bwOn = (date) => bodyweightNear(bws, date);
+  const byWorkout = new Map();
+  for (const x of sets) {
+    if (!byWorkout.has(x.workoutId)) byWorkout.set(x.workoutId, []);
+    byWorkout.get(x.workoutId).push(x);
+  }
+  const out = [];
+  for (const [workoutId, list] of byWorkout) {
+    const b = bestSet(ex.recordType, list, (x) => bwOn(x.date));
+    if (b) out.push({ date: list[0].date, workoutId, set: b.set, score: b.score });
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 /* ===================== 体重 ===================== */
+
+/**
+ * その日の体重(なければ直近の過去の体重、それもなければ一番近い後の体重)。
+ * 実負荷の比較で、体重を記録し始める前の練習だけ別の基準にならないようにする。
+ * bws は日付の古い順
+ */
+export function bodyweightNear(bws, date) {
+  let v = null;
+  for (const b of bws) { if (b.date <= date) v = b.kg; else break; }
+  if (v == null) v = bws.find((b) => b.date > date)?.kg ?? null;
+  return v;
+}
 
 /** 同じ日は上書き(1日1件) */
 export async function saveBodyweight(date, kg) {
@@ -518,11 +571,10 @@ export async function getGoalBest(goal) {
   if (m.type === 'e1rm' && m.exerciseId) {
     const ex = await getExercise(m.exerciseId);
     const sets = await listSetsForExercise(m.exerciseId);
-    const bwCache = new Map();
+    const bws = await listBodyweights();
     for (const s of sets) {
       if (s.warmup) continue;
-      if (!bwCache.has(s.date)) bwCache.set(s.date, (await getLatestBodyweight(s.date))?.kg ?? null);
-      const v = setEstimate1RM(ex?.recordType || 'weight_reps', s, bwCache.get(s.date));
+      const v = setEstimate1RM(ex?.recordType || 'weight_reps', s, bodyweightNear(bws, s.date));
       if (v != null) recorded = betterBest(recorded, { value: v, date: s.date, source: 'record' }, dir);
     }
   }
@@ -600,6 +652,7 @@ export async function importAll(data, { mode = 'merge' } = {}) {
 export async function _seedInternals() {
   return {
     hasExercise: async (id) => !!(await db.exercises.get(id)),
+    getExerciseRaw: (id) => db.exercises.get(id),
     countGear: () => db.gear.count(),
     putExercise: (ex) => put('exercises', ex),
     putGear: (g) => put('gear', g),

@@ -2,6 +2,7 @@
 import { h } from '../dom.js';
 import { formatClock } from '../../domain/calc.js';
 import { REST_PRESETS } from '../../domain/recordTypes.js';
+import { openRestPicker } from './pads.js';
 
 let audioCtx = null;
 /** 音を鳴らせるようにする(スマホは画面を触ったときにしか音の準備ができない) */
@@ -51,9 +52,7 @@ export function createRestTimer({ initial = null, onChange }) {
       onclick: () => {
         unlockAudio();
         if (p.sec == null) {
-          const v = prompt('休憩の秒数', '150');
-          const n = Math.round(Number(String(v ?? '').normalize('NFKC')));
-          if (n > 0 && n <= 3600) start(n, { label: '休憩' });
+          openRestPicker({ title: '休憩(任意の時間)', value: state?.total ?? 150, doneLabel: 'スタート', onDone: (n) => { if (n > 0) start(n, { label: '休憩' }); } });
           return;
         }
         start(p.sec, { label: p.pap ? '休憩 · PAP' : '休憩', pap: !!p.pap });

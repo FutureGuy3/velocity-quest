@@ -3,7 +3,7 @@ import { h, icon } from '../dom.js';
 import { openOverlay } from './overlay.js';
 import { openExerciseForm } from './exerciseForm.js';
 import { listExercises } from '../../db/repo.js';
-import { recordTypeLabel, BODY_PARTS, EQUIPMENT } from '../../domain/recordTypes.js';
+import { recordTypeLabel, BODY_PARTS, EQUIPMENT, SWIM_TAGS } from '../../domain/recordTypes.js';
 
 const PART_KEY = 'vq.picker.part';
 
@@ -33,10 +33,13 @@ export function openPicker({ mode = 'select', context = '', onDone }) {
       });
 
       const tabs = h('div', { class: 'part-tabs', role: 'tablist', 'aria-label': '部位' });
-      const drawTabs = () => tabs.replaceChildren(...['', ...BODY_PARTS].map((p) => h('button', {
-        role: 'tab', 'aria-selected': String(st.part === p),
+      // 部位のあとに水泳の目的(swim:start など)を並べる
+      const tabKeys = ['', ...BODY_PARTS, ...Object.keys(SWIM_TAGS).map((k) => `swim:${k}`)];
+      const tabLabel = (k) => (k.startsWith('swim:') ? SWIM_TAGS[k.slice(5)] : k || 'すべて');
+      const drawTabs = () => tabs.replaceChildren(...tabKeys.map((p) => h('button', {
+        role: 'tab', 'aria-selected': String(st.part === p), class: p.startsWith('swim:') ? 'swim-tab' : null,
         onclick: () => { st.part = p; savePart(p); drawTabs(); refresh(); },
-      }, p || 'すべて')));
+      }, tabLabel(p))));
       drawTabs();
 
       const chips = h('div', { class: 'chips equip-chips', 'aria-label': '器具' });
@@ -50,7 +53,10 @@ export function openPicker({ mode = 'select', context = '', onDone }) {
       async function refresh() {
         const my = ++seq; // 入力が速いときに古い結果で上書きしない
         const rows = await listExercises({
-          bodyPart: st.part || null, equipment: st.equip || null, q: st.q.trim() || null,
+          // 検索語があるときは、タブに関係なくすべての種目から探す
+          bodyPart: !st.q.trim() && st.part && !st.part.startsWith('swim:') ? st.part : null,
+          swim: !st.q.trim() && st.part.startsWith('swim:') ? st.part.slice(5) : null,
+          equipment: st.equip || null, q: st.q.trim() || null,
           includeHidden: manage && st.showHidden,
         });
         if (my !== seq) return;
@@ -66,6 +72,7 @@ export function openPicker({ mode = 'select', context = '', onDone }) {
           `${ex.equipment} · ${recordTypeLabel(ex.recordType)}`,
           ex.unilateral ? h('span', { class: 'tag-mini' }, '片側可') : null,
           ex.starred ? h('span', { class: 'tag-mini accent' }, 'よく使う') : null,
+          (ex.swim || []).map((t) => h('span', { class: 'tag-mini swim' }, SWIM_TAGS[t])),
           ex.hidden ? h('span', { class: 'tag-mini' }, '非表示') : null,
           !ex.builtin ? h('span', { class: 'tag-mini' }, '自分で登録') : null);
         const edit = () => openExerciseForm({ exercise: ex, onSaved: refresh });
@@ -83,7 +90,11 @@ export function openPicker({ mode = 'select', context = '', onDone }) {
       }
 
       const register = () => openExerciseForm({
-        defaults: { bodyPart: st.part || BODY_PARTS[0], equipment: st.equip || 'ダンベル', name: st.q.trim() },
+        defaults: {
+          bodyPart: st.part && !st.part.startsWith('swim:') ? st.part : BODY_PARTS[0],
+          swim: st.part.startsWith('swim:') ? [st.part.slice(5)] : [],
+          equipment: st.equip || 'ダンベル', name: st.q.trim(),
+        },
         onSaved: (ex) => { if (ex && !manage) st.selected.push(ex.id); refresh(); },
       });
 

@@ -2,7 +2,7 @@
 import { h, toast } from '../dom.js';
 import { openOverlay } from './overlay.js';
 import { saveExercise, deleteExercise, listGear } from '../../db/repo.js';
-import { RECORD_TYPES, RECORD_TYPE_KEYS, BODY_PARTS, EQUIPMENT } from '../../domain/recordTypes.js';
+import { RECORD_TYPES, RECORD_TYPE_KEYS, BODY_PARTS, EQUIPMENT, SWIM_TAGS, DEFAULT_REST_SEC } from '../../domain/recordTypes.js';
 import { parseNumber } from '../../domain/calc.js';
 
 export const REST_OPTIONS = [30, 45, 60, 90, 120, 180, 240, 300];
@@ -26,7 +26,8 @@ export async function openExerciseForm({ exercise = null, defaults = {}, onSaved
     recordType: exercise?.recordType ?? 'weight_reps',
     unilateral: exercise?.unilateral ?? false,
     increment: exercise?.increment != null ? String(exercise.increment) : '2.5',
-    restSec: exercise?.restSec ?? 90,
+    restSec: exercise?.restSec ?? DEFAULT_REST_SEC,
+    swim: [...(exercise?.swim ?? defaults.swim ?? [])],
     gearId: exercise?.gearId ?? '',
     unit: exercise?.unit ?? 'cm',
     starred: exercise?.starred ?? false,
@@ -59,9 +60,18 @@ export async function openExerciseForm({ exercise = null, defaults = {}, onSaved
             ? field('使うバー(重さの内訳に使う)', sel('ex-gear', 'gearId', [['', 'なし(合計だけ入れる)'], ...gear.map((g) => [g.id, `${g.name}(${g.barWeight}kg)`])]))
             : null,
           st.recordType === 'trials' ? field('単位', sel('ex-unit', 'unit', [['cm', 'cm'], ['m', 'm']])) : null,
-          h('div', { class: 'row2' },
-            usesWeight ? field('重さの刻み(kg)', h('input', { id: 'ex-inc', class: 'input num-input', inputmode: 'decimal', value: st.increment, oninput: (e) => { st.increment = e.target.value; } })) : null,
-            field('休憩の初期値', sel('ex-rest', 'restSec', REST_OPTIONS.map((s) => [s, restLabel(s)])))),
+          h('div', { class: 'field' },
+            h('span', { class: 'label' }, '水泳の目的(いくつでも)'),
+            h('div', { class: 'chips', style: { padding: 0, flexWrap: 'wrap' } },
+              Object.entries(SWIM_TAGS).map(([k, label]) => h('button', {
+                type: 'button', class: 'chip swim-chip', 'aria-pressed': String(st.swim.includes(k)),
+                onclick: (e) => {
+                  st.swim = st.swim.includes(k) ? st.swim.filter((x) => x !== k) : [...st.swim, k];
+                  e.currentTarget.setAttribute('aria-pressed', String(st.swim.includes(k)));
+                },
+              }, label)))),
+          usesWeight ? field('重さの刻み(kg)', h('input', { id: 'ex-inc', class: 'input num-input', inputmode: 'decimal', value: st.increment, oninput: (e) => { st.increment = e.target.value; } }),
+            '重さのボタン(−/+)が、この刻みで増減します。') : null,
           sw('片側で行える', 'unilateral'),
           sw('よく使う(一覧の上に出す)', 'starred'),
           !isNew ? sw('非表示にする', 'hidden') : null,
@@ -93,6 +103,7 @@ export async function openExerciseForm({ exercise = null, defaults = {}, onSaved
       gearId: st.recordType === 'weight_reps' ? (st.gearId || null) : null,
       unit: st.recordType === 'trials' ? st.unit : null,
       starred: st.starred,
+      swim: st.swim,
       hidden: st.hidden,
       order: exercise?.order ?? 10000,
     });

@@ -26,7 +26,12 @@ export async function seedIfNeeded() {
   }
 
   for (const [i, e] of data.exercises.entries()) {
-    if (await s.hasExercise(e.id)) continue;
+    const cur = await s.getExerciseRaw(e.id);
+    if (cur) {
+      // 版2で足した「水泳の目的」は、まだ持っていない種目にだけ入れる(利用者の編集は上書きしない)
+      if (cur.builtin && cur.swim === undefined) await s.putExercise({ ...cur, swim: e.swim || [] });
+      continue;
+    }
     await s.putExercise({
       id: e.id,
       name: e.name,
@@ -38,6 +43,7 @@ export async function seedIfNeeded() {
       increment: e.increment ?? null,
       restSec: e.restSec ?? 90,
       unit: e.unit ?? null,
+      swim: e.swim || [],
       gearId: GEAR_BY_EQUIPMENT[e.equipment] ?? null,
       starred: !!e.starred,
       hidden: false,
