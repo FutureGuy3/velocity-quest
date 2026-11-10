@@ -30,5 +30,29 @@ export function openDb() {
     meta:        'key',
   });
 
+  // 版2:ルーティンの種目ごとの「セット数×回数」を、セットごとの予定(重さ・回数・休憩)に変える。
+  // 種目どうしのつなぎ(スーパーセット・PAP ペア)は item.link に持つ(新しい項目なので移行は不要)
+  db.version(2).stores({}).upgrade(async (tx) => {
+    const exercises = new Map((await tx.table('exercises').toArray()).map((e) => [e.id, e]));
+    await tx.table('routines').toCollection().modify((r) => {
+      r.items = (r.items || []).map((it) => (Array.isArray(it.setPlans) ? it : migrateItem(it, exercises.get(it.exerciseId))));
+    });
+  });
+
   return db;
+}
+
+/** 版1のルーティンの種目(sets, reps, restSec)を、セットごとの予定に直す */
+export function migrateItem(it, ex) {
+  const n = Math.max(1, Number(it.sets) || 1);
+  const rt = ex?.recordType;
+  const field = rt === 'time' ? 'seconds' : rt === 'distance_band' ? 'distance' : rt === 'trials' ? null : 'reps';
+  const rest = it.pap ? 180 : (it.restSec ?? ex?.restSec ?? 90);
+  const setPlans = Array.from({ length: n }, () => {
+    const p = { warmup: false, restSec: rest };
+    if (field && it.reps != null) p[field] = it.reps;
+    return p;
+  });
+  const { sets, reps, ...rest2 } = it;
+  return { ...rest2, restSec: it.restSec ?? rest, setPlans, link: it.link ?? null };
 }

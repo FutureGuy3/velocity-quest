@@ -1,6 +1,6 @@
 // データ層。画面のコードはこのファイルの関数だけを使って読み書きする。
 // 段階3ではここ(特に put / remove)に同期の処理を足す。
-import { openDb, SYNC_TABLES, IS_PREVIEW } from './schema.js';
+import { openDb, SYNC_TABLES, IS_PREVIEW, migrateItem } from './schema.js';
 import { setEstimate1RM, trialStats, betterBest, bestSet } from '../domain/calc.js';
 
 export { IS_PREVIEW };
@@ -161,7 +161,27 @@ export function deleteRoutine(id) { return remove('routines', id); }
 
 /** ルーティンの並び要素を作る */
 export function newRoutineItem(ex) {
-  return { key: newId(), exerciseId: ex.id, sets: 3, reps: 5, restSec: ex.restSec ?? 90, pap: false };
+  const rest = ex.restSec ?? 90;
+  const field = ex.recordType === 'time' ? 'seconds' : ex.recordType === 'distance_band' ? 'distance' : 'reps';
+  const plan = () => (ex.recordType === 'trials' ? { warmup: false, restSec: rest } : { warmup: false, restSec: rest, [field]: field === 'reps' ? 5 : null });
+  return {
+    key: newId(), exerciseId: ex.id, restSec: rest, pap: false, link: null,
+    setPlans: ex.recordType === 'trials' ? [] : [plan(), plan(), plan()],
+  };
+}
+
+/** 種目のつなぎの種類 */
+export const LINK_TYPES = { superset: 'スーパーセット', pap: 'PAP ペア' };
+
+/**
+ * 並べ替えなどで隣が変わったつなぎを外す(item.link.toKey が直後の種目でなければ外す)
+ * items は配列をそのまま書き換える
+ */
+export function normalizeLinks(items) {
+  items.forEach((it, i) => {
+    if (it.link && items[i + 1]?.key !== it.link.toKey) it.link = null;
+  });
+  return items;
 }
 
 /** ルーティンごとの「前回」(そのルーティンから始めて完了した最後の日付) */
@@ -192,28 +212,35 @@ function pickValues(src) {
   return out;
 }
 
-/** 新しいセットの元になる値を作る(前回の同じ順番の本番セットの値+予定の回数) */
-async function plannedSets(workout, item, count, startOrder) {
-  const last = (await getLastSets(item.exerciseId, { excludeWorkoutId: workout.id })).filter((x) => !x.warmup);
-  const lastMode = last[0]?.sideMode;
-  const out = [];
-  for (let i = 0; i < count; i++) {
-    const prev = last[i] || last[last.length - 1] || null;
+/**
+ * 新しいセットを作る。plans(セットごとの予定)の値を優先し、予定にない値は前回の同じ順番のセットから引き継ぐ。
+ * plans が無いときは count 個、前回の値だけで作る。
+ */
+async function plannedSets(workout, item, plans, startOrder, count = 1) {
+  const lastAll = await getLastSets(item.exerciseId, { excludeWorkoutId: workout.id });
+  const lastWork = lastAll.filter((x) => !x.warmup);
+  const lastWarm = lastAll.filter((x) => x.warmup);
+  const lastMode = lastAll[0]?.sideMode;
+  const list = plans && plans.length ? plans : Array.from({ length: count }, () => ({ warmup: false }));
+  let wi = 0, ui = 0;
+  return list.map((plan, i) => {
+    const pool = plan.warmup ? lastWarm : lastWork;
+    const idx = plan.warmup ? ui++ : wi++;
+    const prev = pool[idx] || pool[pool.length - 1] || null;
     const vals = pickValues(prev);
-    if (item.reps != null && item.planned) {
-      if (vals.left) vals.left.reps = item.reps;
-      if (vals.right) vals.right.reps = item.reps;
-      if (['time'].includes(item.recordType)) vals.seconds = item.reps;
-      else if (item.recordType === 'distance_band') vals.distance = item.reps;
-      else vals.reps = item.reps;
+    for (const f of SET_VALUE_FIELDS) {
+      if (plan[f] == null || plan[f] === '') continue;
+      vals[f] = plan[f];
+      if (vals.left) vals.left[f] = plan[f];
+      if (vals.right) vals.right[f] = plan[f];
     }
-    out.push({
+    return {
       workoutId: workout.id, itemKey: item.key, exerciseId: item.exerciseId, date: workout.date,
-      order: startOrder + i, warmup: false, sideMode: item.sideMode || lastMode || 'both',
+      order: startOrder + i, warmup: !!plan.warmup, sideMode: item.sideMode || lastMode || 'both',
+      restSec: plan.restSec ?? item.restSec ?? null,
       ...vals, face: null, memo: '', done: false,
-    });
-  }
-  return out;
+    };
+  });
 }
 
 /** ルーティンから(またはルーティンなしで)開始。ルーティンはコピーして使い、予定のセットを用意する */
@@ -226,7 +253,12 @@ export async function startWorkout({ routineId = null } = {}) {
     routine = await getRoutine(routineId);
     if (routine) {
       title = routine.name;
-      items = routine.items.map((it) => ({ ...it, key: newId(), fromRoutineKey: it.key, sideMode: null }));
+      // つなぎ(link.toKey)は新しい key に付け替える
+      const keyMap = new Map(routine.items.map((it) => [it.key, newId()]));
+      items = routine.items.map((it) => ({
+        ...it, key: keyMap.get(it.key), fromRoutineKey: it.key, sideMode: null,
+        link: it.link && keyMap.has(it.link.toKey) ? { ...it.link, toKey: keyMap.get(it.link.toKey) } : null,
+      }));
     }
   }
   const bw = await getLatestBodyweight(today);
@@ -250,7 +282,7 @@ export async function startWorkout({ routineId = null } = {}) {
     const last = await getLastSets(it.exerciseId, { excludeWorkoutId: w.id });
     const sideMode = last[0]?.sideMode || 'both';
     it.sideMode = sideMode;
-    const sets = await plannedSets(w, { ...it, sideMode, planned: true, recordType: ex.recordType }, it.sets || 1, order);
+    const sets = await plannedSets(w, { ...it, sideMode }, it.setPlans || [], order, 1);
     order += sets.length;
     for (const st of sets) await put('sets', st);
   }
@@ -269,10 +301,10 @@ export async function addWorkoutItems(workoutId, exerciseIds) {
     const ex = exMap.get(id);
     if (!ex) continue;
     const last = await getLastSets(id, { excludeWorkoutId: w.id });
-    const item = { key: newId(), exerciseId: id, sets: 1, reps: null, restSec: ex.restSec ?? 90, pap: false, sideMode: last[0]?.sideMode || 'both' };
+    const item = { key: newId(), exerciseId: id, restSec: ex.restSec ?? 90, pap: false, link: null, sideMode: last[0]?.sideMode || 'both' };
     items.push(item);
     if (ex.recordType === 'trials') continue;
-    for (const st of await plannedSets(w, { ...item, recordType: ex.recordType }, 1, order)) { await put('sets', st); order++; }
+    for (const st of await plannedSets(w, item, null, order, 1)) { await put('sets', st); order++; }
   }
   return put('workouts', { ...w, items });
 }
@@ -285,7 +317,8 @@ export async function addSet(workout, item, { warmup = false } = {}) {
   const order = (prev ? prev.order : sets.reduce((m, x) => Math.max(m, x.order ?? 0), 0)) + 0.001;
   return put('sets', {
     workoutId: workout.id, itemKey: item.key, exerciseId: item.exerciseId, date: workout.date,
-    order, warmup, sideMode: item.sideMode || 'both', ...pickValues(prev), face: null, memo: '', done: false,
+    order, warmup, sideMode: item.sideMode || 'both', restSec: prev?.restSec ?? item.restSec ?? null,
+    ...pickValues(prev), face: null, memo: '', done: false,
   });
 }
 
@@ -309,27 +342,36 @@ export async function workoutDiffersFromRoutine(workout) {
   if (!workout.routineId) return false;
   const r = await getRoutine(workout.routineId);
   if (!r) return false;
-  const a = r.items.map((it) => `${it.exerciseId}|${!!it.pap}|${it.restSec}`).join(',');
-  const b = workout.items.map((it) => `${it.exerciseId}|${!!it.pap}|${it.restSec}`).join(',');
+  const sig = (items) => items.map((it) => `${it.exerciseId}|${!!it.pap}|${it.link?.type || ''}`).join(',');
+  const a = sig(r.items);
+  const b = sig(workout.items);
   return a !== b;
 }
 
-/** 練習の種目の並び・PAP・休憩をルーティンに反映する(予定のセット×回数は元のルーティンの値を残す) */
+/** 練習の種目の並び・PAP・つなぎをルーティンに反映する(元からある種目のセットごとの予定は残す) */
 export async function applyWorkoutToRoutine(workout) {
   const r = await getRoutine(workout.routineId);
   if (!r) return null;
   const byKey = new Map(r.items.map((it) => [it.key, it]));
   const sets = await listSets(workout.id);
+  // 練習の key → ルーティンの key
+  const keyMap = new Map(workout.items.map((it) => [it.key, it.fromRoutineKey && byKey.has(it.fromRoutineKey) ? it.fromRoutineKey : newId()]));
   const items = workout.items.map((it) => {
-    const orig = it.fromRoutineKey ? byKey.get(it.fromRoutineKey) : null;
-    if (orig) return { ...orig, restSec: it.restSec, pap: !!it.pap };
-    const mine = sets.filter((x) => x.itemKey === it.key && !x.warmup && x.done);
+    const key = keyMap.get(it.key);
+    const link = it.link && keyMap.has(it.link.toKey) ? { ...it.link, toKey: keyMap.get(it.link.toKey) } : null;
+    const orig = byKey.get(key);
+    if (orig) return { ...orig, pap: !!it.pap, link };
+    const mine = sets.filter((x) => x.itemKey === it.key && x.done);
     return {
-      key: newId(), exerciseId: it.exerciseId, sets: Math.max(1, mine.length || 1),
-      reps: mine[mine.length - 1]?.reps ?? 5, restSec: it.restSec, pap: !!it.pap,
+      key, exerciseId: it.exerciseId, restSec: it.restSec, pap: !!it.pap, link,
+      setPlans: mine.map((x) => {
+        const p = { warmup: !!x.warmup, restSec: x.restSec ?? it.restSec ?? null };
+        for (const f of SET_VALUE_FIELDS) if (x[f] != null && x[f] !== '') p[f] = x[f];
+        return p;
+      }),
     };
   });
-  return put('routines', { ...r, items });
+  return put('routines', { ...r, items: normalizeLinks(items) });
 }
 
 export function getWorkout(id) { return getAlive('workouts', id); }
@@ -526,6 +568,13 @@ export async function importAll(data, { mode = 'merge' } = {}) {
   }
   if (data.schemaVersion > db.verno) {
     throw new Error('新しい版のアプリで書き出されたファイルです。アプリを更新してください');
+  }
+  // 古い版のファイルは、ルーティンをいまの形に直してから読み込む
+  if ((data.schemaVersion || 1) < 2 && Array.isArray(data.tables.routines)) {
+    const exs = new Map([...(data.tables.exercises || []), ...(await db.exercises.toArray())].map((e) => [e.id, e]));
+    data = { ...data, tables: { ...data.tables, routines: data.tables.routines.map((r) => ({
+      ...r, items: (r.items || []).map((it) => (Array.isArray(it.setPlans) ? it : migrateItem(it, exs.get(it.exerciseId)))),
+    })) } };
   }
   const report = {};
   await db.transaction('rw', SYNC_TABLES.map((t) => db[t]), async () => {

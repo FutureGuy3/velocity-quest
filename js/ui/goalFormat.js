@@ -23,7 +23,7 @@ export function goalTexts(goal, best, today) {
   if (p.daysLeft != null) days = p.daysLeft >= 0 ? `${p.daysLeft}日` : '期限切れ';
   return {
     target: fmtGoalValue(goal.target, unit),
-    suffix: goal.direction === 'lower' ? `${unit}切り` : unit,
+    suffix: unit,
     bestLabel: best?.source === 'latest' ? '現在' : 'ベスト',
     best: best ? fmtGoalValue(best.value, unit) : '記録なし',
     bestDate: best?.date ? formatDateShort(best.date) : '',

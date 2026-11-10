@@ -4,7 +4,11 @@ export function h(tag, props = {}, ...children) {
   for (const [k, v] of Object.entries(props || {})) {
     if (v == null || v === false) continue;
     if (k === 'class') el.className = v;
-    else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k === 'style' && typeof v === 'object') {
+      for (const [sk, sv] of Object.entries(v)) {
+        if (sk.startsWith('--')) el.style.setProperty(sk, sv); else el.style[sk] = sv;
+      }
+    }
     else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
     else if (k === 'html') el.innerHTML = v;
     else if (v === true) el.setAttribute(k, '');
@@ -37,7 +41,9 @@ const PATHS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   more: '<circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/>',
   pin: '<path d="M12 17v5"/><path d="M9 10.76V6h6v4.76l2 3.24H7z"/><path d="M8 6h8"/>',
-  grip: '<path d="M4 9h16"/><path d="M4 15h16"/>',
+  grip: '<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+  sort: '<path d="M7 4v16"/><path d="m3 8 4-4 4 4"/><path d="M17 20V4"/><path d="m13 16 4 4 4-4"/>',
   up: '<path d="m6 15 6-6 6 6"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
   trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
@@ -105,15 +111,27 @@ export function formatDateShort(date) {
   return `${m}/${d}`;
 }
 
-/** 顔の5段階(1=とてもきつい … 5=とても良い。null は未入力) */
-const MOUTHS = ['M8 16.5q4-3 8 0', 'M8 16q4-1.5 8 0', 'M8.5 15.5h7', 'M8 14.5q4 2 8 0', 'M7.5 14q4.5 4 9 0'];
+/** 顔の5段階(1=とてもきつい … 5=とても良い)。色と表情で見分けられるようにする */
+export const FACE_COLORS = ['#F87171', '#FB923C', '#FACC15', '#A3E635', '#34D399'];
+const FACE_PARTS = [
+  // 1 とてもきつい:> < の目、深いへの字
+  '<path d="M7.6 8.6l2.4 1.4-2.4 1.4"/><path d="M16.4 8.6l-2.4 1.4 2.4 1.4"/><path d="M7.8 17.2q4.2-4.4 8.4 0"/>',
+  // 2 きつい:下がった眉、への字
+  '<path d="M7.4 8.2l3 1.1"/><path d="M16.6 8.2l-3 1.1"/><circle cx="9" cy="11.2" r="0.9" fill="currentColor"/><circle cx="15" cy="11.2" r="0.9" fill="currentColor"/><path d="M8.6 16.6q3.4-2.2 6.8 0"/>',
+  // 3 ふつう:点の目、まっすぐな口
+  '<circle cx="9" cy="10.2" r="0.9" fill="currentColor"/><circle cx="15" cy="10.2" r="0.9" fill="currentColor"/><path d="M8.6 15.4h6.8"/>',
+  // 4 良い:点の目、笑った口
+  '<circle cx="9" cy="10.2" r="0.9" fill="currentColor"/><circle cx="15" cy="10.2" r="0.9" fill="currentColor"/><path d="M8 14.2q4 3.6 8 0"/>',
+  // 5 とても良い:にっこりした目、大きく開けた口
+  '<path d="M7.4 10.6q1.6-2.2 3.2 0"/><path d="M13.4 10.6q1.6-2.2 3.2 0"/><path d="M7.6 13.4h8.8q-.6 4.8-4.4 4.8t-4.4-4.8z" fill="currentColor"/>',
+];
 export function faceIcon(level, size = 26) {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('width', size); svg.setAttribute('height', size); svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '1.8');
-  svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('aria-hidden', 'true');
-  const mouth = level ? MOUTHS[level - 1] : 'M8.5 15.5h7';
-  svg.innerHTML = `<circle cx="12" cy="12" r="9.5"/><circle cx="9" cy="10" r="0.6" fill="currentColor"/><circle cx="15" cy="10" r="0.6" fill="currentColor"/><path d="${mouth}"/>`;
+  svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round'); svg.setAttribute('aria-hidden', 'true');
+  const parts = level ? FACE_PARTS[level - 1] : '<circle cx="9" cy="10.2" r="0.9" fill="currentColor"/><circle cx="15" cy="10.2" r="0.9" fill="currentColor"/><path d="M8.6 15.4h6.8"/>';
+  svg.innerHTML = `<circle cx="12" cy="12" r="9.5"/>${parts}`;
   return svg;
 }
 

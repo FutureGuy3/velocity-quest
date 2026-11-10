@@ -1,5 +1,5 @@
 // 履歴:日付ごとの一覧と、練習の詳細
-import { h, icon, mount, toast, faceIcon, formatDateJa } from '../dom.js';
+import { h, icon, mount, toast, faceIcon, formatDateJa, FACE_COLORS } from '../dom.js';
 import {
   listWorkouts, getWorkout, listSets, getExerciseMap, getWorkoutTrial, deleteWorkout,
 } from '../../db/repo.js';
@@ -86,7 +86,7 @@ export async function renderHistoryDetail({ params }) {
         return h('div', { class: 'detail-set' },
           h('span', { class: `lbl${s.warmup ? ' w' : ''}` }, lbl),
           h('span', { class: 'val' }, formatSet(ex.recordType, s) || '—'),
-          s.face ? h('span', { class: 'face', role: 'img', 'aria-label': `感触:${FACES[s.face - 1]}` }, faceIcon(s.face, 22)) : h('span', {}),
+          s.face ? h('span', { class: 'face', role: 'img', 'aria-label': `感触:${FACES[s.face - 1]}`, style: { '--fc': FACE_COLORS[s.face - 1] } }, faceIcon(s.face, 22)) : h('span', {}),
           s.memo ? h('span', { class: 'memo' }, s.memo) : null);
       })));
   }

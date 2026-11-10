@@ -1,5 +1,6 @@
 // トレーニング記録(記録中/過去の練習の編集)
-import { h, icon, mount, toast, onUnmount, faceIcon, formatDateJa } from '../dom.js';
+import { h, icon, mount, toast, onUnmount, faceIcon, formatDateJa, FACE_COLORS } from '../dom.js';
+import { openReorder } from '../components/reorder.js';
 import { openPicker } from '../components/picker.js';
 import { actionSheet } from '../components/overlay.js';
 import { createRestTimer, unlockAudio } from '../components/restTimer.js';
@@ -9,7 +10,7 @@ import {
   getWorkout, saveWorkout, listSets, saveSet, deleteSet, addSet, getExerciseMap, getGear,
   getLastSets, getBestSet, addWorkoutItems, removeWorkoutItem, finishWorkout, deleteWorkout,
   workoutDiffersFromRoutine, applyWorkoutToRoutine, getWorkoutTrial, saveTrial,
-  saveBodyweight, getActiveWorkout, listRoutines, startWorkout,
+  saveBodyweight, getActiveWorkout, listRoutines, startWorkout, normalizeLinks, LINK_TYPES,
 } from '../../db/repo.js';
 import {
   totalWeight, effectiveLoad, bodyweightRatio, formatElapsed, parseNumber, fmt, trialStats, round,
@@ -118,31 +119,63 @@ export async function renderWorkout({ params }) {
   }
 
   /* ---------- セットの完了 ---------- */
+  /** スーパーセットでつながった種目のまとまり(it を含む)。つながっていなければ [it] */
+  function supersetChain(it) {
+    let i = w.items.indexOf(it);
+    while (i > 0 && w.items[i - 1].link?.type === 'superset' && w.items[i - 1].link.toKey === w.items[i].key) i--;
+    const chain = [w.items[i]];
+    while (chain[chain.length - 1].link?.type === 'superset' && w.items[i + chain.length]?.key === chain[chain.length - 1].link.toKey) {
+      chain.push(w.items[i + chain.length]);
+    }
+    return chain;
+  }
+  const nameOf = (item) => (item ? exMap.get(item.exerciseId)?.name : null);
+  const hasUndone = (item) => itemSets(item.key).some((x) => !x.done);
+  function focusNext(item) {
+    const s = itemSets(item.key).find((x) => !x.done);
+    if (s) activeSet.set(item.key, s.id);
+    redrawCard(item);
+    setTimeout(() => cardEls.get(item.key)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+  }
+
   async function toggleDone(it, set) {
     unlockAudio();
     set.done = !set.done;
     await saveSet(set);
-    if (set.done && live) {
-      const mine = itemSets(it.key);
-      const allDone = mine.filter((x) => !x.warmup).every((x) => x.done);
-      const idx = w.items.findIndex((x) => x.key === it.key);
-      const nextItem = w.items[idx + 1];
-      const nextName = nextItem ? exMap.get(nextItem.exerciseId)?.name : null;
-      if (it.pap) {
-        timer.start(PAP_REST_SEC, { label: '休憩 · PAP', pap: true, next: allDone ? nextName : null });
-      } else if (!allDone) {
-        timer.start(restOf(it), { label: '休憩' });
-      } else {
-        timer.start(restOf(it), { label: '休憩', next: nextName });
-      }
-      const nextSet = mine.find((x) => !x.done);
-      if (nextSet) activeSet.set(it.key, nextSet.id);
-      if (allDone && nextItem) {
+    if (!set.done || !live) { redrawCard(it); return; }
+
+    const mine = itemSets(it.key);
+    const nextSet = mine.find((x) => !x.done);
+    if (nextSet) activeSet.set(it.key, nextSet.id);
+    const rest = it.pap && !set.warmup ? PAP_REST_SEC : (set.restSec ?? restOf(it));
+
+    // スーパーセット:途中の種目は休まず次へ、最後の種目のあとに休憩して最初の種目へ戻る
+    const chain = supersetChain(it);
+    if (chain.length > 1 && !set.warmup) {
+      const pos = chain.indexOf(it);
+      const after = w.items[w.items.indexOf(chain[chain.length - 1]) + 1];
+      if (pos < chain.length - 1) {
+        const nxt = chain.slice(pos + 1).find(hasUndone) || chain[pos + 1];
+        timer.cue(`スーパーセット → 次:${nameOf(nxt)}`);
         redrawCard(it);
-        setTimeout(() => cardEls.get(nextItem.key)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+        focusNext(nxt);
         return;
       }
+      const again = chain.find(hasUndone);
+      timer.start(rest, { label: '休憩 · スーパーセット', next: nameOf(again || after) });
+      redrawCard(it);
+      if (again) focusNext(again); else if (after) focusNext(after);
+      return;
     }
+
+    const allDone = mine.filter((x) => !x.warmup).every((x) => x.done);
+    const nextItem = w.items[w.items.indexOf(it) + 1];
+    if (it.pap && !set.warmup) {
+      timer.start(PAP_REST_SEC, { label: '休憩 · PAP', pap: true, next: allDone ? nameOf(nextItem) : null });
+    } else {
+      timer.start(rest, { label: '休憩', next: allDone ? nameOf(nextItem) : null });
+    }
+    if (allDone && nextItem) { redrawCard(it); focusNext(nextItem); return; }
     redrawCard(it);
   }
 
@@ -152,12 +185,13 @@ export async function renderWorkout({ params }) {
     actionSheet({
       title: ex?.name,
       actions: [
-        i > 0 && { label: '上へ移動', onSelect: () => moveItem(i, -1) },
-        i < w.items.length - 1 && { label: '下へ移動', onSelect: () => moveItem(i, 1) },
+        w.items.length > 1 && { label: '種目を並べ替える', onSelect: reorderItems },
+        i < w.items.length - 1 && { label: it.link ? `つなぎを変える(今 ${LINK_TYPES[it.link.type]})` : '次の種目とつなぐ', onSelect: () => linkMenu(it, w.items[i + 1]) },
         { label: it.pap ? 'PAP を外す' : 'PAP にする(休憩3分)', onSelect: async () => { it.pap = !it.pap; await saveW(); redrawCard(it); } },
         !it.pap && { label: `休憩の初期値を変える(今 ${restLabel(restOf(it))})`, onSelect: () => restMenu(it) },
         { label: 'この種目を外す', danger: true, onSelect: async () => {
           if (!confirm(`「${ex?.name}」を外しますか?入力したセットも消えます。`)) return;
+          if (i > 0 && w.items[i - 1].link) { w.items[i - 1].link = null; await saveW(); }
           w = await removeWorkoutItem(w, it.key);
           sets = await listSets(w.id);
           draw(true);
@@ -171,12 +205,29 @@ export async function renderWorkout({ params }) {
       actions: REST_OPTIONS.map((s) => ({ label: restLabel(s), onSelect: async () => { it.restSec = s; await saveW(); redrawCard(it); } })),
     });
   }
-  async function moveItem(i, d) {
-    const j = i + d;
-    [w.items[i], w.items[j]] = [w.items[j], w.items[i]];
-    await saveW();
-    draw(true);
+  function reorderItems() {
+    openReorder({
+      title: '種目の並べ替え',
+      rows: w.items.map((it) => ({ key: it.key, label: nameOf(it) ?? '(削除された種目)', sub: `${itemSets(it.key).filter((x) => x.done).length}/${itemSets(it.key).length} セット完了` })),
+      onDone: async (keys) => {
+        const byKey = new Map(w.items.map((it) => [it.key, it]));
+        w.items = normalizeLinks(keys.map((k) => byKey.get(k)));
+        await saveW();
+        draw(true);
+      },
+    });
   }
+  function linkMenu(it, next) {
+    actionSheet({
+      title: `${nameOf(it)} と ${nameOf(next)} のつなぎ方`,
+      actions: [
+        { label: 'スーパーセット(交互に行い、2つ目のあとに休憩)', onSelect: async () => { it.link = { type: 'superset', toKey: next.key }; await saveW(); draw(true); } },
+        { label: 'PAP ペア(重い種目を3分休憩で行い、そのあと次の種目)', onSelect: async () => { it.link = { type: 'pap', toKey: next.key }; it.pap = true; await saveW(); draw(true); } },
+        it.link && { label: 'つなぎを外す', danger: true, onSelect: async () => { it.link = null; await saveW(); draw(true); } },
+      ],
+    });
+  }
+
 
   function setMenu(it, set, label) {
     actionSheet({
@@ -239,10 +290,10 @@ export async function renderWorkout({ params }) {
     if (!set) return h('div', { class: 'face-panel' });
     const label = setLabel(it, set);
     return h('div', { class: 'face-panel' },
-      h('span', { class: 'label' }, `セット ${label} の感触`),
+      h('span', { class: 'label' }, `セット ${label} の感触`, set.face ? h('span', { class: 'face-name', style: { '--fc': FACE_COLORS[set.face - 1] } }, `:${FACES[set.face - 1]}`) : ''),
       h('div', { class: 'faces', role: 'radiogroup', 'aria-label': '感触' },
         FACES.map((name, i) => h('button', {
-          type: 'button', role: 'radio', 'aria-checked': String(set.face === i + 1), 'aria-label': name,
+          type: 'button', role: 'radio', 'aria-checked': String(set.face === i + 1), 'aria-label': name, style: { '--fc': FACE_COLORS[i] },
           onclick: async () => {
             set.face = set.face === i + 1 ? null : i + 1;
             await saveSet(set);
@@ -277,8 +328,17 @@ export async function renderWorkout({ params }) {
         h('h3', {}, ex?.name ?? '(削除された種目)'),
         h('span', { class: 'meta' }, meta, extraMeta ? ` · ${extraMeta}` : ''),
         h('span', { class: 'tags' },
-          it.pap ? h('span', { class: 'tag-mini accent' }, 'PAP 3分') : h('span', { class: 'tag-mini' }, `休憩 ${restLabel(restOf(it))}`))),
+          it.pap ? h('span', { class: 'tag-mini accent' }, 'PAP 3分') : h('span', { class: 'tag-mini' }, `休憩 ${restLabel(restOf(it))}`)),
+        linkBanner(it, i)),
       h('button', { class: 'icon-btn', type: 'button', 'aria-label': `${ex?.name ?? ''}のメニュー`, onclick: () => itemMenu(it, i) }, icon('more')));
+  }
+
+  function linkBanner(it, i) {
+    const prev = w.items[i - 1];
+    const parts = [];
+    if (prev?.link && prev.link.toKey === it.key) parts.push(h('span', { class: `link-banner ${prev.link.type}` }, icon('link', 12), `${LINK_TYPES[prev.link.type]} ← ${nameOf(prev)}`));
+    if (it.link) parts.push(h('span', { class: `link-banner ${it.link.type}` }, icon('link', 12), `${LINK_TYPES[it.link.type]} → ${nameOf(w.items[i + 1])}`));
+    return parts.length ? h('span', { class: 'tags', style: { flexWrap: 'wrap' } }, parts) : null;
   }
 
   function setCard(it, i, ex) {
@@ -335,6 +395,7 @@ export async function renderWorkout({ params }) {
       cells,
       h('button', {
         class: `face-btn${s.face ? ' on' : ''}`, type: 'button', 'aria-label': `感触:${s.face ? FACES[s.face - 1] : '未入力'}`,
+        style: s.face ? { '--fc': FACE_COLORS[s.face - 1] } : null,
         onclick: () => { activeSet.set(it.key, s.id); markActive(it); cardEls.get(it.key)?.querySelector('.face-panel')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); },
       }, faceIcon(s.face, 26)),
       h('button', {
@@ -547,6 +608,7 @@ export async function renderWorkout({ params }) {
             },
           }),
         }, '+ 種目を追加'),
+        w.items.length > 1 ? h('button', { class: 'btn btn-ghost btn-block', onclick: reorderItems }, icon('sort', 18), '種目を並べ替える') : null,
         h('div', { class: 'field' },
           h('label', { for: 'w-memo' }, 'この練習のメモ'),
           h('textarea', { id: 'w-memo', class: 'input textarea', rows: 2, oninput: (e) => { w.memo = e.target.value; clearTimeout(memoT); memoT = setTimeout(saveW, 500); } }, w.memo || '')),

@@ -37,6 +37,7 @@ const PRECACHE = [
   './js/ui/components/exerciseForm.js',
   './js/ui/components/restTimer.js',
   './js/ui/components/wakeLock.js',
+  './js/ui/components/reorder.js',
   './data/exercises.json',
   './vendor/dexie.mjs',
   './icons/icon-192.png',

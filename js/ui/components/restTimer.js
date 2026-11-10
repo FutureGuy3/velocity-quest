@@ -37,6 +37,8 @@ export function createRestTimer({ initial = null, onChange }) {
   let state = initial && initial.endsAt > Date.now() - 5000 ? initial : null;
   let finishedAt = 0;
   let tick = null;
+  let cueText = '';
+  let cueAt = 0;
 
   const labelEl = h('span', { class: 'timer-label' });
   const timeEl = h('span', { class: 'timer-time num', role: 'timer', 'aria-live': 'off' });
@@ -69,8 +71,14 @@ export function createRestTimer({ initial = null, onChange }) {
     const now = Date.now();
     const running = state && state.endsAt > now;
     el.classList.toggle('running', !!running);
-    el.classList.toggle('done', !running && finishedAt && now - finishedAt < 6000);
-    if (running) {
+    const cueOn = !running && cueText && now - cueAt < 20000;
+    el.classList.toggle('done', !running && !cueOn && finishedAt && now - finishedAt < 6000);
+    el.classList.toggle('cue', !!cueOn);
+    if (cueOn) {
+      labelEl.textContent = cueText;
+      timeEl.textContent = '休まず';
+      barEl.style.width = '0%';
+    } else if (running) {
       const left = (state.endsAt - now) / 1000;
       labelEl.textContent = state.label || '休憩';
       timeEl.textContent = formatClock(left);
@@ -104,6 +112,7 @@ export function createRestTimer({ initial = null, onChange }) {
 
   function start(sec, { label = '休憩', pap = false, next = null } = {}) {
     finishedAt = 0;
+    cueText = '';
     state = { endsAt: Date.now() + sec * 1000, total: sec, label: next ? `${label} → 次:${next}` : label, pap, next };
     onChange?.(state);
     render();
@@ -114,13 +123,20 @@ export function createRestTimer({ initial = null, onChange }) {
     onChange?.(state);
     render();
   }
-  function stop() {
+  /** 休憩なしで次へ進む合図(スーパーセットの途中など) */
+  function cue(text) {
     state = null; finishedAt = 0;
+    cueText = text; cueAt = Date.now();
+    onChange?.(null);
+    render();
+  }
+  function stop() {
+    state = null; finishedAt = 0; cueText = '';
     onChange?.(null);
     render();
   }
 
   tick = setInterval(loop, 250);
   render();
-  return { el, start, stop, destroy: () => clearInterval(tick) };
+  return { el, start, stop, cue, destroy: () => clearInterval(tick) };
 }
