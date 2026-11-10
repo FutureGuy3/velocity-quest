@@ -55,7 +55,8 @@ jobs:
           else
             git init -q tmp && cd tmp
             git fetch -q --filter=blob:none "https://github.com/${{ github.repository }}.git" '+refs/heads/*:refs/remotes/origin/*'
-            b=$(git for-each-ref --sort=-committerdate --format='%(refname:lstrip=3)' refs/remotes/origin | grep -v '^main$' | head -n 1)
+            # main にまだ入っていない変更があるブランチのうち、いちばん新しいもの(なければ main)
+            b=$(git for-each-ref --sort=-committerdate --no-merged=refs/remotes/origin/main --format='%(refname:lstrip=3)' refs/remotes/origin | grep -v '^main$' | head -n 1)
             echo "branch=${b:-main}" >> "$GITHUB_OUTPUT"
           fi
 
@@ -78,8 +79,46 @@ jobs:
           echo "本番: main / テスト版: ${{ steps.pick.outputs.branch }}"
 
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - id: upload
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
-      - id: deployment
-        uses: actions/deploy-pages@v4
+
+      # 公開する。actions/deploy-pages は「版の名前」に main のコミットを使うため、
+      # main が同じままテスト版だけ更新すると名前が重なり、新しい中身が出ないことがある。
+      # そこで実行ごとに違う名前を付けて、Pages の API で直接公開する。
+      - name: 公開する
+        id: deployment
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
+          BUILD_VERSION: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const oidc = await core.getIDToken();
+            const { data } = await github.request('POST /repos/{owner}/{repo}/pages/deployments', {
+              owner, repo,
+              artifact_id: Number(process.env.ARTIFACT_ID),
+              pages_build_version: process.env.BUILD_VERSION,
+              oidc_token: oidc,
+            });
+            core.info(`公開を始めました: ${process.env.BUILD_VERSION}(ID ${data.id})`);
+            core.setOutput('page_url', data.page_url);
+            const bad = ['deployment_failed', 'deployment_content_failed', 'deployment_cancelled', 'deployment_lost', 'deployment_attempt_error'];
+            for (let i = 0; i < 90; i++) {
+              const st = await github.request('GET /repos/{owner}/{repo}/pages/deployments/{id}', { owner, repo, id: data.id });
+              core.info(`状態: ${st.data.status}`);
+              if (st.data.status === 'succeed') return;
+              if (bad.includes(st.data.status)) { core.setFailed(`公開に失敗しました: ${st.data.status}`); return; }
+              await new Promise((r) => setTimeout(r, 5000));
+            }
+            core.setFailed('公開が時間内に終わりませんでした');
+
+      - name: 公開された版を確かめる
+        run: |
+          sleep 20
+          for p in "" "preview/"; do
+            v=$(curl -s "https://futureguy3.github.io/velocity-quest/${p}js/version.js?t=$(date +%s)" | grep -o "'[0-9.]*'" || true)
+            echo "/velocity-quest/${p} の版: ${v:-取れませんでした}"
+          done

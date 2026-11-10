@@ -17,6 +17,22 @@ const LABELS = {
   bodyweights: '体重', trials: '試技', goals: '目標', settings: '設定',
 };
 
+/**
+ * 最新の版を読み込み直す:この配信場所(本番 or テスト版)の Service Worker とキャッシュだけを消して読み込み直す。
+ * 記録(IndexedDB)には触らない
+ */
+async function reloadLatest() {
+  if (!confirm('最新の版を読み込み直します。記録は消えません。よろしいですか?')) return;
+  try {
+    const scope = new URL('./', location.href).href;
+    const regs = await navigator.serviceWorker?.getRegistrations?.() || [];
+    for (const r of regs) if (r.scope === scope) await r.unregister();
+    const prefix = `vq-app-${new URL(scope).pathname}-`;
+    for (const k of await caches.keys()) if (k.startsWith(prefix) || /^vq-app-\d/.test(k)) await caches.delete(k);
+  } catch (e) { console.warn(e); }
+  location.replace(`${location.pathname}?v=${Date.now()}#/home`);
+}
+
 export async function renderSettings() {
   const [settings, gear, c] = await Promise.all([getSettings(), listGear(), counts()]);
 
@@ -128,6 +144,8 @@ export async function renderSettings() {
             h('span', { class: 'num', style: { fontSize: '22px' } }, v)))),
         h('p', { class: 'label', style: { marginTop: '10px' } }, 'この端末の ID'),
         h('p', { style: { fontSize: '12px', wordBreak: 'break-all' } }, getDeviceId())),
+      h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: reloadLatest }, '最新の版を読み込み直す'),
+      h('p', { class: 'hint' }, '新しい版が出ているのに画面が変わらないときに押してください。この端末に保存したアプリの部品だけを消して読み込み直します。記録は消えません。'),
       h('a', { class: 'btn btn-ghost btn-block', href: './tests/calc.test.html' }, '計算のテストを開く')),
     h('div', { style: { height: '24px' } }),
   ), { showNav: false });
