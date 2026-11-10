@@ -87,7 +87,31 @@ function registerServiceWorker() {
   });
   navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
     .then((reg) => reg.update())
-    .catch((e) => console.warn('SW 登録に失敗', e));
+    .catch((e) => console.warn('SW 登録に失敗', e))
+    .then(() => ensureLatest());
+}
+
+/**
+ * 公開中の版の番号を確かめ、この端末の版より新しければ入れ替える。
+ * スマホのブラウザは Service Worker の更新を確かめないことがあり、古い版のままになるため。
+ * 記録中のトレーニングがあるときと、電波がないときは何もしない。同じ版への入れ替えは1回だけ試す
+ */
+async function ensureLatest() {
+  try {
+    const res = await fetch(`./js/version.js?check=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const latest = ((await res.text()).match(/'([0-9.]+)'/) || [])[1];
+    if (!latest || latest === self.VQ_VERSION) return;
+    const tried = `vq.update.tried.${latest}`;
+    if (sessionStorage.getItem(tried)) return;
+    sessionStorage.setItem(tried, '1');
+    if (await getActiveWorkout()) { toast(`新しい版(${latest})があります。トレーニングを終えてから開き直してください`); return; }
+    const scope = new URL('./', location.href).href;
+    for (const r of await navigator.serviceWorker.getRegistrations()) if (r.scope === scope) await r.unregister();
+    const prefix = `vq-app-${new URL(scope).pathname}-`;
+    for (const k of await caches.keys()) if (k.startsWith(prefix)) await caches.delete(k);
+    location.replace(`${location.pathname}?v=${latest}${location.hash}`);
+  } catch { /* 電波がないときなどは何もしない */ }
 }
 
 boot();

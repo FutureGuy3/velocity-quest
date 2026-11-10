@@ -90,6 +90,9 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin !== self.location.origin) return;
 
+  // 版の確かめ(app.js の ensureLatest)は、キャッシュを使わず必ずネットに聞く
+  if (url.searchParams.has('check')) return;
+
   // 画面遷移:アプリ本体(./ と index.html)はキャッシュから。
   // それ以外のページ(tests/ など)はネットから取り、つながらなければキャッシュ
   if (req.mode === 'navigate') {
