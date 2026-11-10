@@ -93,6 +93,12 @@ self.addEventListener('fetch', (event) => {
   // 版の確かめ(app.js の ensureLatest)は、キャッシュを使わず必ずネットに聞く
   if (url.searchParams.has('check')) return;
 
+  // 本番の Service Worker は、中にあるテスト版(preview/)の部品を扱わない(テスト版の古い部品を抱え込まないように)
+  const scopePath = new URL(self.registration.scope).pathname;
+  if (!scopePath.endsWith('/preview/') && url.pathname.startsWith(`${scopePath}preview/`)) return;
+  // 更新用のページはいつもネットから
+  if (url.pathname.endsWith('/update.html')) return;
+
   // 画面遷移:アプリ本体(./ と index.html)はキャッシュから。
   // それ以外のページ(tests/ など)はネットから取り、つながらなければキャッシュ
   if (req.mode === 'navigate') {

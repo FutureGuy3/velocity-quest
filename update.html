@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Velocity Quest の更新</title>
+<style>
+  body { margin: 0; background: #0B0B0C; color: #F4F4F5; font-family: 'Noto Sans JP', system-ui, sans-serif; font-size: 15px; line-height: 1.6; }
+  main { max-width: 480px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .box { background: #161618; border: 1px solid #2A2A2E; border-radius: 16px; padding: 14px 16px; margin: 12px 0; }
+  .k { color: #A1A1AA; font-size: 12px; }
+  .v { font-size: 22px; font-weight: 700; }
+  button, a.btn { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 52px; border-radius: 12px; border: none; background: #FF6A1A; color: #0B0B0C; font-size: 16px; font-weight: 700; text-decoration: none; margin-top: 12px; }
+  a.btn.ghost { background: #161618; color: #F4F4F5; border: 1px solid #2A2A2E; }
+  .note { color: #A1A1AA; font-size: 13px; }
+  #log { white-space: pre-wrap; font-size: 12px; color: #A1A1AA; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Velocity Quest の更新</h1>
+  <p class="note">このページは、スマホに残った古い版を入れ替えるためのページです。<b>記録は消えません</b>(消すのはアプリの部品だけです)。</p>
+  <div class="box">
+    <div class="k">場所</div><div class="v" id="where">—</div>
+    <div class="k" style="margin-top:8px">この端末に残っている版</div><div class="v" id="cached">確かめています…</div>
+  </div>
+  <p class="note">入れ替えたあと、アプリの画面のいちばん下に出る「版」の番号で、新しくなったかを確かめてください。</p>
+  <button id="go" type="button">最新の版に入れ替える</button>
+  <a class="btn ghost" href="./">入れ替えずにアプリを開く</a>
+  <p id="log"></p>
+</main>
+<script>
+// このページはオフライン用の保存(キャッシュ)に入れないので、いつもネットから読み込まれる。
+// 古い版のアプリに邪魔されずに、この場所の Service Worker とキャッシュを消せる。記録(IndexedDB)には触らない。
+(async () => {
+  const scope = new URL('./', location.href).href;
+  const scopePath = new URL(scope).pathname;
+  const log = (t) => { document.getElementById('log').textContent += t + '\n'; };
+  document.getElementById('where').textContent = scopePath.includes('/preview/') ? 'テスト版' : '本番';
+
+  try {
+    const names = (await caches.keys()).filter((k) => k.startsWith('vq-app-' + scopePath + '-'));
+    document.getElementById('cached').textContent = names.map((k) => k.slice(('vq-app-' + scopePath + '-').length)).join(', ') || 'なし';
+  } catch (e) { document.getElementById('cached').textContent = '—'; }
+
+  document.getElementById('go').addEventListener('click', async () => {
+    try {
+      for (const r of await navigator.serviceWorker.getRegistrations()) {
+        if (r.scope === scope) { await r.unregister(); log('オフライン用のしくみを外しました'); }
+      }
+      for (const k of await caches.keys()) {
+        if (!k.startsWith('vq-app-')) continue;
+        if (k.startsWith('vq-app-' + scopePath + '-') || /^vq-app-\d/.test(k)) { await caches.delete(k); log('古い部品を消しました: ' + k); continue; }
+        // ほかの場所(本番)のキャッシュに入りこんだ、この場所の部品も消す
+        const c = await caches.open(k);
+        for (const req of await c.keys()) if (req.url.startsWith(scope)) await c.delete(req);
+      }
+    } catch (e) { log('一部を消せませんでした: ' + e.message); }
+    log('最新の版を読み込みます…');
+    location.replace('./?v=' + Date.now() + '#/home');
+  });
+})();
+</script>
+</body>
+</html>
