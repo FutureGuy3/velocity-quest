@@ -13,6 +13,7 @@ import { renderWorkoutStart, renderWorkout } from './ui/screens/workout.js';
 import { renderHistory, renderHistoryDetail } from './ui/screens/history.js';
 import { renderTrialEdit } from './ui/screens/trialEdit.js';
 import { renderBodyweight } from './ui/screens/bodyweight.js';
+import { renderPool } from './ui/screens/pool.js';
 
 function buildNav() {
   const nav = document.getElementById('nav');
@@ -35,6 +36,7 @@ function registerRoutes() {
   route('/history/:id', (r) => renderHistoryDetail(r));
   route('/settings', () => renderSettings());
   route('/bodyweight', () => renderBodyweight());
+  route('/pool/:id', (r) => renderPool(r));
   route('/routine/new', (r) => renderRoutineEdit(r));
   route('/routine/:id', (r) => renderRoutineEdit(r));
   route('/trial/new', (r) => renderTrialEdit(r));

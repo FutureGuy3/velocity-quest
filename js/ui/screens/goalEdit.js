@@ -5,7 +5,7 @@ import { h, icon, mount, toast, formatDateShort } from '../dom.js';
 const formatDateJaShort = (d) => d.replace(/-/g, '/');
 import {
   getGoal, saveGoal, deleteGoal, listExercises, getExerciseMap, localDate,
-  getGoalBest, getGoalHistory, setNextGoal, saveGoalTargets, saveGoalBestLog,
+  getGoalBest, getGoalHistory, setNextGoal, saveGoalTargets, saveGoalBestLog, listSeries,
 } from '../../db/repo.js';
 import { parseNumber, goalProgress } from '../../domain/calc.js';
 import { openOverlay } from '../components/overlay.js';
@@ -16,6 +16,7 @@ import { back } from '../../router.js';
 
 const METRICS = [
   { key: 'manual', label: '手入力' },
+  { key: 'series', label: '練習タイム' },
   { key: 'trial', label: '試技' },
   { key: 'e1rm', label: '推定1RM' },
   { key: 'bodyweight', label: '体重' },
@@ -31,6 +32,7 @@ export async function renderGoalEdit({ params }) {
     return;
   }
   const exMap = await getExerciseMap();
+  const seriesList = await listSeries();
   const visible = await listExercises();
   const trialExercises = [...exMap.values()].filter((e) => e.recordType === 'trials' && (!e.hidden || e.id === existing?.metric?.exerciseId));
   const e1rmExercises = visible.filter((e) => E1RM_TYPES.includes(e.recordType));
@@ -44,6 +46,7 @@ export async function renderGoalEdit({ params }) {
     title: existing.title || '',
     metricType: existing.metric?.type || 'manual',
     exerciseId: existing.metric?.exerciseId || '',
+    seriesId: existing.metric?.seriesId || '',
     stat: existing.metric?.stat || 'best',
     target: existing.target != null ? fmtGoalValue(existing.target, existing.unit) : '',
     unit: existing.unit || '秒',
@@ -53,7 +56,7 @@ export async function renderGoalEdit({ params }) {
     bestDate: existing.manualBest?.date || '',
     pinned: !!existing.pinned,
   } : {
-    title: '', metricType: 'manual', exerciseId: '', stat: 'best',
+    title: '', metricType: 'manual', exerciseId: '', seriesId: '', stat: 'best',
     target: '', unit: '秒', direction: 'lower', deadline: '', bestValue: '', bestDate: '',
     pinned: true,
   };
@@ -68,6 +71,11 @@ export async function renderGoalEdit({ params }) {
       if (!e1rmExercises.some((e) => e.id === st.exerciseId)) st.exerciseId = e1rmExercises[0]?.id || '';
       st.unit = 'kg';
       st.direction = 'higher';
+    } else if (type === 'series') {
+      st.exerciseId = '';
+      if (!seriesList.some((s) => s.id === st.seriesId)) st.seriesId = seriesList[0]?.id || '';
+      st.unit = '秒';
+      st.direction = 'lower';
     } else if (type === 'bodyweight') {
       st.exerciseId = '';
       st.unit = 'kg';
@@ -84,6 +92,7 @@ export async function renderGoalEdit({ params }) {
     if (st.metricType === 'trial') return ex ? `${ex.name}${st.stat === 'average' ? '(平均)' : ''}` : '';
     if (st.metricType === 'e1rm') return ex ? `${ex.name} 推定1RM` : '';
     if (st.metricType === 'bodyweight') return '体重';
+    if (st.metricType === 'series') return seriesList.find((s) => s.id === st.seriesId)?.name || '';
     return '';
   }
 
@@ -96,6 +105,7 @@ export async function renderGoalEdit({ params }) {
     if (!title) errors.push('名前を入れてください');
     if (target == null) errors.push(clock ? '目標値を数字で入れてください(例 30.00 や 1:02.50)' : '目標値を数字で入れてください');
     if ((st.metricType === 'trial' || st.metricType === 'e1rm') && !st.exerciseId) errors.push('種目を選んでください');
+    if (st.metricType === 'series' && !st.seriesId) errors.push('練習タイムの系統を選んでください(プール練習でタイムを記録すると系統ができます)');
     let manualBest = null;
     if (st.metricType !== 'bodyweight' && st.bestValue.trim()) {
       const v = parseNumber(st.bestValue, { allowClock: clock });
@@ -110,6 +120,7 @@ export async function renderGoalEdit({ params }) {
       metric: {
         type: st.metricType,
         exerciseId: st.exerciseId || null,
+        seriesId: st.metricType === 'series' ? st.seriesId : null,
         stat: st.metricType === 'trial' ? st.stat : null,
       },
       target,
@@ -382,6 +393,13 @@ export async function renderGoalEdit({ params }) {
         exerciseSelect(trialExercises),
         segmented('どの値で比べるか', [{ key: 'best', label: '最高' }, { key: 'average', label: '平均' }], 'stat'),
       ] : null,
+      st.metricType === 'series' ? (seriesList.length
+        ? [field('系統', h('select', {
+          id: 'goal-series', class: 'select',
+          onchange: (e) => { st.seriesId = e.target.value; render(); },
+        }, seriesList.map((s) => h('option', { value: s.id, selected: s.id === st.seriesId }, s.name)))),
+        h('p', { class: 'hint', style: { marginTop: '-10px' } }, 'この系統の練習タイムからベストを出し、手で入れたベストと良い方を表示します。')]
+        : h('p', { class: 'hint' }, 'まだ系統がありません。プール練習でタイムを記録すると、条件ごとに系統ができます。')) : null,
       st.metricType === 'e1rm' ? [
         exerciseSelect(e1rmExercises),
         h('p', { class: 'hint', style: { marginTop: '-10px' } }, '10回以下のセットから計算します。加重懸垂は体重+加重で計算します。'),

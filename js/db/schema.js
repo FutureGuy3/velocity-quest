@@ -11,6 +11,7 @@ export const DB_NAME = IS_PREVIEW ? 'velocity-quest-preview' : 'velocity-quest';
 export const SYNC_TABLES = [
   'exercises', 'gear', 'routines', 'workouts', 'sets',
   'bodyweights', 'trials', 'goals', 'settings',
+  'poolSessions', 'swimTimes', 'series',
 ];
 
 export function openDb() {
@@ -50,6 +51,16 @@ export function openDb() {
       e.favorite = false;
       delete e.starred;
     });
+  });
+
+  // 版5(段階2):プールの練習とタイム、系統
+  //  poolSessions:プール練習(日付・環境・メモ)
+  //  swimTimes:タイム1本ずつ(条件と系統、有効か)
+  //  series:系統(条件が同じタイムのまとまり。key は条件から決まる)
+  db.version(5).stores({
+    poolSessions: 'id, updatedAt, date, status',
+    swimTimes: 'id, updatedAt, sessionId, seriesId, [seriesId+date]',
+    series: 'id, updatedAt, key',
   });
 
   return db;

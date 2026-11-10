@@ -20,6 +20,7 @@ import { recordTypeLabel, SIDE_MODES, FACES, PAP_REST_SEC, DEFAULT_REST_SEC } fr
 import { FIELD_META, TYPE_FIELDS, formatSet, summarizeSets } from '../setFormat.js';
 import { navigate, back } from '../../router.js';
 import { choosePreset } from './home.js';
+import { startPool } from './pool.js';
 
 /* ======================= #/workout(開始画面) ======================= */
 
@@ -44,6 +45,8 @@ export async function renderWorkoutStart() {
         h('button', { class: 'play-btn', 'aria-label': `${r.name}を開始`, onclick: () => start(r.id) }, icon('play'))))
         : h('p', { class: 'empty', style: { padding: '8px 4px' } }, 'ルーティンはまだありません。'),
       h('button', { class: 'btn btn-dashed btn-block', onclick: () => start(null) }, 'ルーティンなしで開始')),
+    h('div', { class: 'section-head' }, h('h2', {}, 'プール')),
+    h('div', { class: 'stack' }, h('button', { class: 'btn btn-ghost btn-block pool-start', onclick: startPool }, 'プール練習を始める(タイム入力)')),
   ), { showNav: true, navKey: 'workout' });
 }
 

@@ -1,7 +1,7 @@
 // 履歴:日付ごとの一覧と、練習の詳細
 import { h, icon, mount, toast, faceIcon, formatDateJa, FACE_COLORS } from '../dom.js';
 import {
-  listWorkouts, getWorkout, listSets, getExerciseMap, getWorkoutTrial, deleteWorkout,
+  listHistory, listSwimTimes, getWorkout, listSets, getExerciseMap, getWorkoutTrial, deleteWorkout,
 } from '../../db/repo.js';
 import { trialStats, fmt } from '../../domain/calc.js';
 import { FACES } from '../../domain/recordTypes.js';
@@ -20,36 +20,42 @@ function hhmm(iso) {
 }
 
 export async function renderHistory() {
-  const workouts = await listWorkouts();
-  const counts = await Promise.all(workouts.map(async (w) => {
-    const sets = await listSets(w.id);
-    return { sets: sets.filter((x) => x.done && !x.warmup).length };
+  const rows = await listHistory();
+  const metas = await Promise.all(rows.map(async (r) => {
+    if (r.kind === 'gym') {
+      const sets = await listSets(r.item.id);
+      const mins = minutesBetween(r.item.startedAt, r.item.endedAt);
+      return [`${r.item.items.length}種目`, `${sets.filter((x) => x.done && !x.warmup).length}セット`, mins != null ? `${mins}分` : null].filter(Boolean).join(' · ');
+    }
+    const times = await listSwimTimes(r.item.id);
+    const series = new Set(times.map((t) => t.seriesId));
+    return `${times.length}本 · ${series.size}系統`;
   }));
 
   const groups = [];
-  workouts.forEach((w, i) => {
-    const [y, m] = w.date.split('-');
+  rows.forEach((r, i) => {
+    const [y, m] = r.date.split('-');
     const key = `${y}年${Number(m)}月`;
     if (!groups.length || groups[groups.length - 1].key !== key) groups.push({ key, rows: [] });
-    groups[groups.length - 1].rows.push([w, counts[i]]);
+    groups[groups.length - 1].rows.push([r, metas[i]]);
   });
 
   mount(h('div', {},
     h('header', { class: 'topbar' }, h('div', { class: 'topbar-title' }, h('h1', { class: 'topbar-h' }, '履歴'))),
-    workouts.length ? groups.map((g) => [
+    rows.length ? groups.map((g) => [
       h('h2', { class: 'month-head' }, g.key),
-      h('div', { class: 'stack' }, g.rows.map(([w, c]) => {
-        const [y, m, d] = w.date.split('-').map(Number);
+      h('div', { class: 'stack' }, g.rows.map(([r, meta]) => {
+        const [y, m, d] = r.date.split('-').map(Number);
         const wd = WEEK[new Date(y, m - 1, d).getDay()];
-        const mins = minutesBetween(w.startedAt, w.endedAt);
-        return h('a', { class: 'hist-row', href: `#/history/${w.id}` },
+        const gym = r.kind === 'gym';
+        return h('a', { class: 'hist-row', href: gym ? `#/history/${r.item.id}` : `#/pool/${r.item.id}` },
           h('div', { class: 'hist-date' }, h('span', { class: 'd' }, String(d)), h('span', { class: 'w' }, `${m}月 ${wd}`)),
           h('div', { class: 'info' },
-            h('span', { class: 'name' }, w.title || 'トレーニング'),
-            h('span', { class: 'meta' }, [`${w.items.length}種目`, `${c.sets}セット`, mins != null ? `${mins}分` : null].filter(Boolean).join(' · '))),
+            h('span', { class: 'name' }, h('span', { class: `kind ${r.kind}` }, gym ? 'ジム' : 'プール'), gym ? (r.item.title || 'トレーニング') : 'タイム'),
+            h('span', { class: 'meta' }, meta)),
           h('span', { style: { color: 'var(--faint)', display: 'inline-flex', flexShrink: '0' } }, icon('forward', 18)));
       })),
-    ]) : h('p', { class: 'empty' }, 'まだ記録がありません。トレーニングを終了すると、ここに日付ごとに並びます。'),
+    ]) : h('p', { class: 'empty' }, 'まだ記録がありません。トレーニングやプール練習を終了すると、ここに日付ごとに並びます。'),
   ), { showNav: true, navKey: 'history' });
 }
 

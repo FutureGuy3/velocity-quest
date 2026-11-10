@@ -3,6 +3,9 @@
 import { openDb, SYNC_TABLES, IS_PREVIEW, migrateItem, migrateGoal } from './schema.js';
 import { setEstimate1RM, trialStats, betterBest, bestSet, goalProgress } from '../domain/calc.js';
 import { DEFAULT_REST_SEC } from '../domain/recordTypes.js';
+import {
+  normalizeConditions, seriesKey, seriesAutoName, SERIES_COLORS, sessionValue, cutoffInfo, DEFAULT_CONDITIONS,
+} from '../domain/swim.js';
 
 export { IS_PREVIEW };
 
@@ -682,6 +685,8 @@ export async function getGoalHistory(goal) {
     }
   } else if (m.type === 'e1rm' && m.exerciseId) {
     for (const r of await getExerciseProgress(m.exerciseId)) bests.push({ date: r.date, value: r.score, source: 'record' });
+  } else if (m.type === 'series' && m.seriesId) {
+    for (const p of await getSeriesProgress(m.seriesId, 'best')) bests.push({ date: p.date, value: p.value, source: 'record' });
   } else if (m.type === 'bodyweight') {
     bests = (await listBodyweights()).map((b) => ({ date: b.date, value: b.kg, source: 'record' }));
   }
@@ -706,6 +711,7 @@ export const GOAL_METRICS = {
   trial: '試技',
   e1rm: '推定1RM',
   bodyweight: '体重',
+  series: '練習タイム',
 };
 
 /**
@@ -731,6 +737,9 @@ export async function getGoalBest(goal) {
       if (v != null) recorded = betterBest(recorded, { value: v, date: t.date, source: 'record' }, dir);
     }
   }
+  if (m.type === 'series' && m.seriesId) {
+    for (const p of await getSeriesProgress(m.seriesId, 'best')) recorded = betterBest(recorded, { value: p.value, date: p.date, source: 'record' }, dir);
+  }
   if (m.type === 'e1rm' && m.exerciseId) {
     const ex = await getExercise(m.exerciseId);
     const sets = await listSetsForExercise(m.exerciseId);
@@ -744,6 +753,118 @@ export async function getGoalBest(goal) {
   return betterBest(manual, recorded, dir);
 }
 export function deleteGoal(id) { return remove('goals', id); }
+
+/* ===================== プール(段階2) ===================== */
+
+/** プール練習を始める(環境:short / long / private) */
+export async function startPoolSession({ environment = 'short' } = {}) {
+  return put('poolSessions', { date: localDate(), startedAt: nowIso(), endedAt: null, status: 'active', environment, memo: '' });
+}
+export async function getActivePoolSession() {
+  const rows = await db.poolSessions.where('status').equals('active').toArray();
+  return rows.filter(alive).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0] || null;
+}
+export function getPoolSession(id) { return getAlive('poolSessions', id); }
+export function savePoolSession(s) { return put('poolSessions', s); }
+export async function finishPoolSession(id) {
+  const s = await db.poolSessions.get(id);
+  if (!s) return null;
+  return put('poolSessions', { ...s, status: 'done', endedAt: s.endedAt || nowIso() });
+}
+export async function deletePoolSession(id) {
+  for (const t of (await db.swimTimes.where('sessionId').equals(id).toArray()).filter(alive)) await remove('swimTimes', t.id);
+  return remove('poolSessions', id);
+}
+export async function listPoolSessions() {
+  return (await db.poolSessions.orderBy('date').reverse().toArray()).filter((s) => alive(s) && s.status === 'done');
+}
+
+/**
+ * 系統。id は条件の key から決める(どの端末で記録しても同じ系統になり、段階3の同期で二重にならない)
+ */
+export function seriesIdOf(conditions) { return `series:${seriesKey(conditions)}`; }
+
+export async function getSeries(id) { return getAlive('series', id); }
+export async function listSeries() {
+  return (await db.series.toArray()).filter(alive).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.createdAt.localeCompare(b.createdAt));
+}
+export function saveSeries(s) { return put('series', s); }
+
+/** 条件に合う系統を返す。なければ作る(名前は自動、色は順に) */
+export async function ensureSeries(conditions) {
+  const c = normalizeConditions(conditions);
+  const id = seriesIdOf(c);
+  const cur = await db.series.get(id);
+  if (cur && !cur.deleted) return cur;
+  const n = (await db.series.count());
+  return put('series', {
+    ...(cur || {}), id, key: seriesKey(c), conditions: c, name: seriesAutoName(c),
+    color: SERIES_COLORS[n % SERIES_COLORS.length], order: n + 1, deleted: false,
+  });
+}
+
+/** タイムを1本記録する */
+export async function addSwimTime(session, conditions, seconds) {
+  const c = normalizeConditions(conditions);
+  const s = await ensureSeries(c);
+  const mine = await listSwimTimes(session.id);
+  return put('swimTimes', {
+    sessionId: session.id, seriesId: s.id, date: session.date, order: mine.length + 1,
+    seconds, valid: true, conditions: c,
+  });
+}
+export async function listSwimTimes(sessionId) {
+  return (await db.swimTimes.where('sessionId').equals(sessionId).toArray()).filter(alive).sort((a, b) => a.order - b.order);
+}
+export function saveSwimTime(t) { return put('swimTimes', t); }
+export function deleteSwimTime(id) { return remove('swimTimes', id); }
+
+/** 前回記録したタイムの条件(なければ既定) */
+export async function getLastConditions() {
+  const rows = (await db.swimTimes.orderBy('updatedAt').reverse().limit(20).toArray()).filter(alive);
+  return rows[0]?.conditions ? normalizeConditions(rows[0].conditions) : { ...DEFAULT_CONDITIONS };
+}
+
+/**
+ * 系統の推移:練習ごとの代表値(最高 or 有効な本数の平均。目安超え・無効は除く)を日付順に
+ * [{ date, value, sessionId, count }]
+ */
+export async function getSeriesProgress(seriesId, mode = 'best') {
+  const rows = (await db.swimTimes.where('[seriesId+date]').between([seriesId, ''], [seriesId, '\uffff']).toArray()).filter(alive);
+  const bySession = new Map();
+  for (const t of rows) {
+    if (!bySession.has(t.sessionId)) bySession.set(t.sessionId, []);
+    bySession.get(t.sessionId).push(t);
+  }
+  const out = [];
+  for (const [sessionId, list] of bySession) {
+    list.sort((a, b) => a.order - b.order);
+    const v = sessionValue(list, mode);
+    if (v != null) out.push({ date: list[0].date, value: v, sessionId, count: list.length });
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** 系統ごとの本数とベスト(一覧用) */
+export async function getSeriesSummary(seriesId) {
+  const prog = await getSeriesProgress(seriesId, 'best');
+  const best = prog.reduce((m, p) => (m == null || p.value < m.value ? p : m), null);
+  return { sessions: prog.length, best, last: prog[prog.length - 1] || null };
+}
+
+/** 練習とプール練習を合わせた履歴(新しい順) */
+export async function listHistory() {
+  const gym = (await listWorkouts()).map((w) => ({ kind: 'gym', date: w.date, startedAt: w.startedAt, item: w }));
+  const pool = (await listPoolSessions()).map((s) => ({ kind: 'pool', date: s.date, startedAt: s.startedAt, item: s }));
+  return [...gym, ...pool].sort((a, b) => b.date.localeCompare(a.date) || (b.startedAt || '').localeCompare(a.startedAt || ''));
+}
+
+/** 記録のある種目の id(重ねるグラフの候補) */
+export async function listExerciseIdsWithRecords() {
+  const ids = new Set();
+  await db.sets.each((x) => { if (alive(x) && x.done && !x.warmup) ids.add(x.exerciseId); });
+  return [...ids];
+}
 
 /* ===================== 設定 ===================== */
 
