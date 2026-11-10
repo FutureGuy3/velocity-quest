@@ -2,7 +2,11 @@
 // ファイルを変えたら js/version.js の版を上げること(キャッシュ名に使う)。
 importScripts('./js/version.js');
 const CACHE_VERSION = self.VQ_VERSION;
-const APP_CACHE = `vq-app-${CACHE_VERSION}`;
+// 本番(/velocity-quest/)とテスト版(/velocity-quest/preview/)は同じサイトにあるので、
+// キャッシュ名に配信場所を入れて、互いのキャッシュを消さないようにする
+const SCOPE_TAG = new URL(self.registration.scope).pathname;
+const APP_PREFIX = `vq-app-${SCOPE_TAG}-`;
+const APP_CACHE = `${APP_PREFIX}${CACHE_VERSION}`;
 const FONT_CACHE = 'vq-fonts';
 
 const PRECACHE = [
@@ -62,7 +66,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys
-        .filter((k) => k.startsWith('vq-app-') && k !== APP_CACHE)
+        // 自分の配信場所の古い版と、場所を入れる前の名前(vq-app-0.x.x)だけを消す
+        .filter((k) => (k.startsWith(APP_PREFIX) && k !== APP_CACHE) || /^vq-app-\d/.test(k))
         .map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );

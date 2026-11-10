@@ -1,0 +1,85 @@
+# GitHub Pages への公開
+#   本番   https://futureguy3.github.io/velocity-quest/          … main ブランチ
+#   テスト https://futureguy3.github.io/velocity-quest/preview/  … 作業用ブランチ(テスト版は本番と別のデータを使う)
+#
+# Pages へ公開できるのは main からの実行だけ(GitHub の既定の決まり)なので、
+# 作業用ブランチに push されたときは、main でこのワークフローを動かすよう頼む(preview にブランチ名を渡す)。
+name: Pages
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+    inputs:
+      preview:
+        description: テスト版(/preview/)に出すブランチ。空なら最後に更新された作業用ブランチ
+        required: false
+        default: ''
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # 作業用ブランチへの push:main で公開を動かす
+  request:
+    if: github.event_name == 'push' && github.ref_name != 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: main で公開を動かす
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "${{ github.repository }}" --ref main -f preview="${{ github.ref_name }}"
+
+  # main への push、または上からの依頼:本番とテスト版をまとめて公開する
+  deploy:
+    if: (github.event_name == 'push' && github.ref_name == 'main') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: テスト版に出すブランチを決める
+        id: pick
+        env:
+          INPUT: ${{ github.event.inputs.preview }}
+        run: |
+          if [ -n "$INPUT" ]; then
+            echo "branch=$INPUT" >> "$GITHUB_OUTPUT"
+          else
+            git init -q tmp && cd tmp
+            git fetch -q --filter=blob:none "https://github.com/${{ github.repository }}.git" '+refs/heads/*:refs/remotes/origin/*'
+            b=$(git for-each-ref --sort=-committerdate --format='%(refname:lstrip=3)' refs/remotes/origin | grep -v '^main$' | head -n 1)
+            echo "branch=${b:-main}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 本番(main)を取り出す
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: site
+
+      - name: テスト版を取り出す
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pick.outputs.branch }}
+          path: site/preview
+
+      - name: 公開しないものを除く
+        run: |
+          rm -rf site/.git site/.github site/preview/.git site/preview/.github site/preview/preview
+          touch site/.nojekyll
+          echo "本番: main / テスト版: ${{ steps.pick.outputs.branch }}"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
