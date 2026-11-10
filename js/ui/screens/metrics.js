@@ -3,8 +3,9 @@
 import { h, icon, mount, toast } from '../dom.js';
 import {
   listGoals, getGoalBest, localDate, GOAL_METRICS, listExercises, listTrials,
-  getSettings, saveSettings, getExerciseMap, getExerciseProgress,
+  getSettings, saveSettings, getExerciseMap, getExerciseProgress, reorderGoals,
 } from '../../db/repo.js';
+import { openReorder } from '../components/reorder.js';
 import { openPicker } from '../components/picker.js';
 import { actionSheet } from '../components/overlay.js';
 import { formatSet } from '../setFormat.js';
@@ -46,7 +47,13 @@ export async function renderMetrics() {
       h('div', { class: 'topbar-title' }, h('h1', { class: 'topbar-h' }, '指標と目標'))),
     h('div', { class: 'section-head', style: { paddingTop: '8px' } },
       h('h2', {}, '目標'),
-      h('a', { href: '#/goal/new' }, '+ 目標を作る')),
+      h('div', { style: { display: 'flex', gap: '16px' } },
+        goals.length > 1 ? h('button', { class: 'link-btn', type: 'button', onclick: () => openReorder({
+          title: '目標の並べ替え',
+          rows: goals.map((g) => ({ key: g.id, label: g.title, sub: g.pinned ? 'ホームに表示中' : 'ホームには出さない' })),
+          onDone: async (ids) => { await reorderGoals(ids); toast('並び順を保存しました(ホームの表示順も同じです)'); renderMetrics(); },
+        }) }, icon('sort', 16), ' 並べ替え') : null,
+        h('a', { href: '#/goal/new' }, '+ 目標を作る'))),
     h('div', { class: 'stack' },
       goals.length
         ? goals.map((g, i) => goalRow(g, bests[i], today))

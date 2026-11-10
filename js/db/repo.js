@@ -521,10 +521,26 @@ export function deleteTrial(id) { return remove('trials', id); }
 /* ===================== 目標 ===================== */
 
 export async function listGoals() {
-  return (await db.goals.toArray()).filter(alive).sort((a, b) => (b.pinned === true) - (a.pinned === true) || (a.order ?? 0) - (b.order ?? 0) || a.createdAt.localeCompare(b.createdAt));
+  // 並べ替えた順(order)。order が無い古い目標は作った順
+  return (await db.goals.toArray()).filter(alive).sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.createdAt.localeCompare(b.createdAt));
+}
+
+/** 目標の並び順を保存する(ids の順に 1, 2, 3 …)。ホームの表示順もこの順 */
+export async function reorderGoals(ids) {
+  const goals = new Map((await listGoals()).map((g) => [g.id, g]));
+  let n = 1;
+  for (const id of ids) {
+    const g = goals.get(id);
+    if (g && g.order !== n) await put('goals', { ...g, order: n });
+    n++;
+  }
 }
 export function getGoal(id) { return getAlive('goals', id); }
-export function saveGoal(g) { return put('goals', g); }
+export async function saveGoal(g) {
+  // 新しい目標は一番下に足す
+  if (g.order == null) g = { ...g, order: (await listGoals()).reduce((m, x) => Math.max(m, x.order ?? 0), 0) + 1 };
+  return put('goals', g);
+}
 
 /** ホーム上部に表示する目標(複数可。左右のスワイプで切り替える) */
 export async function getPinnedGoals() {
