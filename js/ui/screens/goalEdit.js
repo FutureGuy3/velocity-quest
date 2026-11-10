@@ -1,8 +1,11 @@
 // 目標の作成・編集
 import { h, icon, mount, toast, formatDateShort } from '../dom.js';
+
+/** 2026-10-15 → 2026/10/15(過去の記録は年もわかるように) */
+const formatDateJaShort = (d) => d.replace(/-/g, '/');
 import {
   getGoal, saveGoal, deleteGoal, listExercises, getExerciseMap, localDate,
-  getGoalBest, getGoalHistory, setNextGoal,
+  getGoalBest, getGoalHistory, setNextGoal, saveGoalTargets, saveGoalBestLog,
 } from '../../db/repo.js';
 import { parseNumber, goalProgress } from '../../domain/calc.js';
 import { openOverlay } from '../components/overlay.js';
@@ -163,49 +166,169 @@ export async function renderGoalEdit({ params }) {
 
   /* ---------- 描画 ---------- */
 
-  /* ---------- 目標の推移と「次の目標を立てる」 ---------- */
+  /* ---------- 目標の推移(さかのぼって入力・修正できる) ---------- */
   let historySection = null;
   if (existing) {
     const today = localDate();
     const [best, hist] = await Promise.all([getGoalBest(existing), getGoalHistory(existing)]);
     const unit = existing.unit || '';
     const lower = existing.direction === 'lower';
+    const clock = unit === '秒';
     const achieved = goalProgress(existing, best, today).achieved;
     const f = (v) => fmtGoalValue(v, unit);
     const RESULT = { achieved: '達成', changed: '変更' };
+    const reload = () => renderGoalEdit({ params });
+    const targets = hist.targets.map((t) => ({ ...t }));
+    const bestLog = (existing.bestLog || []).map((x) => ({ ...x }));
 
+    // フォームの部品
+    const numIn = (id, value) => h('input', { id, class: 'input num-input', inputmode: clock ? 'text' : 'decimal', value: value == null ? '' : f(value), placeholder: clock ? '30.00' : '' });
+    const dateIn = (id, value, opts = {}) => h('input', { id, class: 'input', type: 'date', value: value || '', ...opts });
+    const fieldOf = (label, ctrl) => h('div', { class: 'field' }, h('label', { for: ctrl.id }, label), ctrl);
+    const readNum = (el) => parseNumber(el.value, { allowClock: clock });
+    const resultSeg = (initial) => {
+      let v = initial;
+      const wrap = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': '結果' });
+      const draw = () => wrap.replaceChildren(...[['achieved', '達成'], ['changed', '変更']].map(([k, l]) => h('button', {
+        type: 'button', role: 'radio', 'aria-checked': String(v === k), onclick: () => { v = k; draw(); },
+      }, l)));
+      draw();
+      return { el: wrap, get: () => v };
+    };
+    const clockHint = clock ? h('p', { class: 'hint', style: { marginTop: '-10px' } }, '1分を超えるタイムは 1:02.50 のように入れられます') : null;
+
+    /* 次の目標を立てる(切り替えた日と結果を選べる) */
     const openNext = () => openOverlay({
       title: '次の目標を立てる',
       subtitle: existing.title,
       render(api) {
-        const clock = unit === '秒';
-        const tIn = h('input', { id: 'next-target', class: 'input num-input', inputmode: clock ? 'text' : 'decimal', placeholder: f(existing.target) });
-        const dIn = h('input', { id: 'next-deadline', class: 'input', type: 'date', min: today });
+        const tIn = numIn('next-target', null);
+        const onIn = dateIn('next-on', today, { max: today, min: targets[targets.length - 1]?.setOn });
+        const dIn = dateIn('next-deadline', '');
+        const seg = resultSeg(achieved ? 'achieved' : 'changed');
         return h('form', {
           class: 'form', novalidate: true,
           onsubmit: async (e) => {
             e.preventDefault();
-            const v = parseNumber(tIn.value, { allowClock: clock });
+            const v = readNum(tIn);
             if (v == null) { toast('新しい目標値を数字で入れてください'); return; }
-            await setNextGoal(existing.id, { target: v, deadline: dIn.value || null });
-            toast(achieved ? '達成した目標を記録して、次の目標を立てました' : 'いまの目標を「変更」として記録して、次の目標を立てました');
+            await setNextGoal(existing.id, { target: v, deadline: dIn.value || null, on: onIn.value || today, result: seg.get() });
+            toast('次の目標を立てました');
             api.close();
-            renderGoalEdit({ params });
+            reload();
           },
         },
-        h('p', { class: 'hint' }, achieved
-          ? `いまの目標 ${f(existing.target)}${unit} は「達成」として推移に残ります。`
-          : `いまの目標 ${f(existing.target)}${unit} はまだ届いていないので、「変更」として推移に残ります。`),
-        h('div', { class: 'row2' },
-          h('div', { class: 'field' }, h('label', { for: 'next-target' }, `新しい目標値(${unit})`), tIn),
-          h('div', { class: 'field' }, h('label', { for: 'next-deadline' }, '期限(なくてもよい)'), dIn)),
-        clock ? h('p', { class: 'hint', style: { marginTop: '-10px' } }, '1分を超えるタイムは 1:02.50 のように入れられます') : null,
+        h('div', { class: 'field' }, h('span', { class: 'label' }, `いまの目標 ${f(existing.target)}${unit} の結果`), seg.el),
+        fieldOf('切り替えた日(達成・変更した日)', onIn),
+        h('div', { class: 'row2' }, fieldOf(`新しい目標値(${unit})`, tIn), fieldOf('期限(なくてもよい)', dIn)),
+        clockHint,
         h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, '次の目標にする'));
       },
     });
 
-    // いまの目標は期限まで(期限がなければ今日まで)線を引き、どこまで先を見た目標かが分かるようにする
-    const steps = hist.targets.filter((t) => t.value != null).map((t) => ({ from: t.setOn, to: t.endedOn || (t.deadline && t.deadline > today ? t.deadline : null), value: t.value, result: t.result }));
+    /* 目標の履歴を足す・直す・消す(i が null なら過去の目標を足す) */
+    const editTarget = (i) => {
+      const isAdd = i == null;
+      const t = isAdd ? { value: null, setOn: '', endedOn: '', result: 'achieved', deadline: '' } : targets[i];
+      const isCurrent = !isAdd && i === targets.length - 1;
+      openOverlay({
+        title: isAdd ? '過去の目標を足す' : (isCurrent ? 'いまの目標を直す' : '目標の履歴を直す'),
+        subtitle: existing.title,
+        render(api) {
+          const vIn = numIn('t-value', t.value);
+          const sIn = dateIn('t-set', t.setOn, { max: today });
+          const eIn = dateIn('t-end', t.endedOn, { max: today });
+          const dIn = dateIn('t-deadline', t.deadline);
+          const seg = resultSeg(t.result || 'achieved');
+          return h('form', {
+            class: 'form', novalidate: true,
+            onsubmit: async (e) => {
+              e.preventDefault();
+              const value = readNum(vIn);
+              if (value == null) { toast('目標値を数字で入れてください'); return; }
+              if (!sIn.value) { toast('立てた日を入れてください'); return; }
+              if (!isCurrent) {
+                if (!eIn.value) { toast('終えた日(達成・変更した日)を入れてください'); return; }
+                if (eIn.value < sIn.value) { toast('終えた日は、立てた日と同じか後にしてください'); return; }
+              }
+              const cur = targets[targets.length - 1];
+              if (isAdd && cur && sIn.value > cur.setOn) { toast(`いまの目標(${formatDateShort(cur.setOn)}に立てた)より前の日付で入れてください`); return; }
+              const entry = { value, setOn: sIn.value, endedOn: isCurrent ? null : eIn.value, result: isCurrent ? null : seg.get(), deadline: dIn.value || null };
+              const next = targets.slice();
+              if (isAdd) next.push(entry); else next[i] = entry;
+              await saveGoalTargets(existing.id, next);
+              toast(isAdd ? '過去の目標を足しました' : '直しました');
+              api.close();
+              reload();
+            },
+          },
+          isAdd ? h('p', { class: 'hint' }, '例:5月に立てて10月に達成した目標。いまの目標より前に立てた日付で入れます。') : null,
+          h('div', { class: 'row2' }, fieldOf(`目標値(${unit})`, vIn), fieldOf('期限(なくてもよい)', dIn)),
+          clockHint,
+          h('div', { class: 'row2' },
+            fieldOf('立てた日', sIn),
+            isCurrent ? h('div', { class: 'field' }, h('span', { class: 'label' }, '終えた日'), h('p', { class: 'hint', style: { minHeight: '44px', display: 'flex', alignItems: 'center' } }, 'いまの目標です')) : fieldOf('終えた日', eIn)),
+          !isCurrent ? h('div', { class: 'field' }, h('span', { class: 'label' }, '結果'), seg.el) : null,
+          h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, isAdd ? '足す' : '保存'),
+          !isAdd && targets.length > 1 ? h('button', {
+            class: 'btn btn-danger btn-block', type: 'button',
+            onclick: async () => {
+              if (!confirm(`${f(t.value)}${unit} の目標を履歴から消しますか?`)) return;
+              await saveGoalTargets(existing.id, targets.filter((_, k) => k !== i));
+              toast('消しました'); api.close(); reload();
+            },
+          }, 'この目標を履歴から消す') : null);
+        },
+      });
+    };
+
+    /* 手で入れたベストを足す・直す・消す(i が null なら過去のベストを足す) */
+    const editBest = (i) => {
+      const isAdd = i == null;
+      const x = isAdd ? { value: null, date: '' } : bestLog[i];
+      openOverlay({
+        title: isAdd ? '過去のベストを足す' : 'ベストの記録を直す',
+        subtitle: existing.title,
+        render(api) {
+          const vIn = numIn('b-value', x.value);
+          const dIn = dateIn('b-date', x.date, { max: today });
+          return h('form', {
+            class: 'form', novalidate: true,
+            onsubmit: async (e) => {
+              e.preventDefault();
+              const v = readNum(vIn);
+              if (v == null) { toast('ベストを数字で入れてください'); return; }
+              if (!dIn.value) { toast('日付を入れてください'); return; }
+              const next = bestLog.slice();
+              const entry = { value: v, date: dIn.value };
+              if (isAdd) next.push(entry); else next[i] = entry;
+              await saveGoalBestLog(existing.id, next);
+              toast(isAdd ? 'ベストを足しました' : '直しました');
+              api.close();
+              reload();
+            },
+          },
+          h('div', { class: 'row2' }, fieldOf(`ベスト(${unit})`, vIn), fieldOf('出した日', dIn)),
+          clockHint,
+          h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, isAdd ? '足す' : '保存'),
+          !isAdd ? h('button', {
+            class: 'btn btn-danger btn-block', type: 'button',
+            onclick: async () => {
+              if (!confirm(`${formatDateShort(x.date)} の ${f(x.value)}${unit} を消しますか?`)) return;
+              await saveGoalBestLog(existing.id, bestLog.filter((_, k) => k !== i));
+              toast('消しました'); api.close(); reload();
+            },
+          }, 'この記録を消す') : null);
+        },
+      });
+    };
+
+    const steps = targets.filter((t) => t.value != null).map((t) => ({
+      // いまの目標は期限まで(期限がなければ今日まで)線を引く
+      from: t.setOn, to: t.endedOn || (t.deadline && t.deadline > today ? t.deadline : null), value: t.value, result: t.result,
+    }));
+    const showBestLog = existing.metric?.type !== 'bodyweight';
+
     historySection = h('div', { class: 'stack', style: { marginBottom: '6px' } },
       achieved ? h('div', { class: 'achieved-banner' },
         h('span', {}, `目標 ${f(existing.target)}${unit} を達成しています`),
@@ -217,13 +340,28 @@ export async function renderGoalEdit({ params }) {
           points: hist.bests.map((b) => ({ date: b.date, value: b.value })), steps, today,
           better: lower ? 'lower' : 'higher', format: f, label: '目標値とベストの推移',
         }),
-        h('p', { class: 'hint' }, '破線が目標値(○は達成)、オレンジの点と線がベスト。'),
+        h('p', { class: 'hint' }, '破線が目標値(○は達成)、オレンジの点と線がベスト。行を押すと直せます。'),
         h('div', { class: 'trial-past' },
-          hist.targets.slice().reverse().map((t) => h('div', { class: 'target-row' },
-            h('span', {}, `${formatDateShort(t.setOn)}〜${t.endedOn ? formatDateShort(t.endedOn) : 'いま'}`),
-            h('span', { class: 'num' }, `${f(t.value)}${unit}`),
-            h('span', { class: `tag-mini${t.result === 'achieved' ? ' accent' : ''}` }, t.result ? RESULT[t.result] : (t.deadline ? `期限 ${formatDateShort(t.deadline)}` : 'いまの目標'))))),
-        !achieved ? h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: openNext }, '次の目標を立てる(目標を変える)') : null),
+          targets.map((t, i) => ({ t, i })).reverse().map(({ t, i }) => h('button', {
+            class: 'target-row', type: 'button', onclick: () => editTarget(i), 'aria-label': `${f(t.value)}${unit} の目標を直す`,
+          },
+          h('span', {}, `${formatDateShort(t.setOn)}〜${t.endedOn ? formatDateShort(t.endedOn) : 'いま'}`),
+          h('span', { class: 'num' }, `${f(t.value)}${unit}`),
+          h('span', { class: `tag-mini${t.result === 'achieved' ? ' accent' : ''}` }, t.result ? RESULT[t.result] : (t.deadline ? `期限 ${formatDateShort(t.deadline)}` : 'いまの目標'))))),
+        h('div', { class: 'card-actions' },
+          h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => editTarget(null) }, '+ 過去の目標'),
+          h('button', { class: 'btn btn-ghost', type: 'button', onclick: openNext }, '次の目標を立てる'))),
+      showBestLog ? h('section', { class: 'card trial-card', 'aria-label': '手で入れたベスト' },
+        h('div', { class: 'trial-head' }, h('h2', {}, '手で入れたベスト'),
+          h('span', { class: 'label' }, existing.metric?.type === 'manual' ? '' : '記録からのベストとは別')),
+        bestLog.length ? h('div', { class: 'trial-past' },
+          bestLog.map((x, i) => ({ x, i })).reverse().map(({ x, i }) => h('button', {
+            class: 'target-row', type: 'button', onclick: () => editBest(i), 'aria-label': `${formatDateShort(x.date)} のベストを直す`,
+          },
+          h('span', {}, formatDateJaShort(x.date)),
+          h('span', { class: 'num' }, `${f(x.value)}${unit}`),
+          h('span', {})))) : h('p', { class: 'hint' }, 'まだありません。'),
+        h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: () => editBest(null) }, '+ 過去のベストを足す')) : null,
       h('p', { class: 'hint', style: { padding: '0 4px' } }, '下の欄で目標値を書き換えると、いまの目標の訂正になります(推移には残りません)。'));
   }
 

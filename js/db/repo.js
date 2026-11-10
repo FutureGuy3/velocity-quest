@@ -567,18 +567,55 @@ export async function saveGoal(g) {
 /**
  * 次の目標を立てる。いまの目標を「達成」(ベストが届いていれば)か「変更」として閉じ、新しい目標値を履歴に足す。
  */
-export async function setNextGoal(goalId, { target, deadline = null }) {
+export async function setNextGoal(goalId, { target, deadline = null, on = null, result = null }) {
   const g = migrateGoal(await db.goals.get(goalId));
-  const today = localDate();
-  const best = await getGoalBest(g);
-  const achieved = goalProgress(g, best, today).achieved;
+  const day = on || localDate();
+  let res = result;
+  if (!res) {
+    const best = await getGoalBest(g);
+    res = goalProgress(g, best, day).achieved ? 'achieved' : 'changed';
+  }
   const cur = g.targets[g.targets.length - 1];
   const targets = [
     ...g.targets.slice(0, -1),
-    { ...cur, endedOn: today, result: achieved ? 'achieved' : 'changed' },
-    { value: target, deadline, setOn: today, endedOn: null, result: null },
+    { ...cur, endedOn: day, result: res },
+    { value: target, deadline, setOn: day, endedOn: null, result: null },
   ];
-  return put('goals', { ...g, target, deadline, targets });
+  return saveGoalTargets(goalId, targets, g);
+}
+
+/**
+ * 目標値の履歴を、さかのぼって直した内容で保存する。
+ * 立てた日の順に並べ、最後の1つを「いまの目標」(終えた日なし)にする。
+ * それより前の目標に終えた日がなければ、次の目標を立てた日を入れる。
+ */
+export async function saveGoalTargets(goalId, targets, g0 = null) {
+  const g = g0 || migrateGoal(await db.goals.get(goalId));
+  const list = targets.filter((t) => t && t.value != null && t.setOn)
+    .map((t) => ({ value: t.value, deadline: t.deadline || null, setOn: t.setOn, endedOn: t.endedOn || null, result: t.result || null }))
+    .sort((a, b) => a.setOn.localeCompare(b.setOn));
+  if (!list.length) return g;
+  list.forEach((t, i) => {
+    if (i === list.length - 1) { t.endedOn = null; t.result = null; return; }
+    if (!t.endedOn) t.endedOn = list[i + 1].setOn;
+    if (!t.result) t.result = 'changed';
+  });
+  const cur = list[list.length - 1];
+  return put('goals', { ...g, targets: list, target: cur.value, deadline: cur.deadline });
+}
+
+/**
+ * 手で入れたベストの記録を、さかのぼって直した内容で保存する。
+ * 「ベスト」(manualBest)は記録の中で一番良いもの(良い方向に合わせる)にそろえる。
+ */
+export async function saveGoalBestLog(goalId, log) {
+  const g = migrateGoal(await db.goals.get(goalId));
+  const list = log.filter((x) => x && x.value != null && x.date)
+    .map((x) => ({ value: Number(x.value), date: x.date }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const dir = g.direction === 'lower' ? 'lower' : 'higher';
+  const best = list.reduce((m, x) => betterBest(m, x, dir), null);
+  return put('goals', { ...g, bestLog: list, manualBest: best ? { value: best.value, date: best.date } : null });
 }
 
 /**
