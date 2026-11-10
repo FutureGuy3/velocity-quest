@@ -203,7 +203,7 @@ export async function renderRoutineEdit({ params }) {
               const prev = it.setPlans.slice(0, k).reverse().find((x) => x[f] != null);
               openValuePad({
                 title: `${ex.name} · セット ${label} · ${FIELD_META[f].label}`,
-                value: p[f], start: prev?.[f] ?? null, steps: stepsFor(f, ex.increment), anchor: btn,
+                value: p[f], start: prev?.[f] ?? null, steps: stepsFor(f, ex.increment, ex.equipment), anchor: btn,
                 onChange: (v) => { p[f] = v; btn.setValue(v); touch(); },
               });
             },

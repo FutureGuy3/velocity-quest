@@ -492,3 +492,16 @@ button.target-row { width: 100%; background: transparent; border: none; border-t
 .star-btn { width: var(--tap); height: var(--tap); flex-shrink: 0; border: none; background: transparent; color: var(--faint); display: inline-flex; align-items: center; justify-content: center; padding: 0; }
 .star-btn.on { color: #FFB020; }
 .ex-item { padding-left: 14px; gap: 6px; }
+
+/* ---- 入力パネル:−/+ を横に並べ、片手で届く側に寄せる ---- */
+.pad-tools { display: flex; justify-content: flex-end; margin-top: -4px; }
+.pad-tools.left { justify-content: flex-start; }
+.pad-side { min-height: var(--tap); padding: 0 12px; border-radius: var(--r-md); border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 12px; }
+.pad-grid { display: flex; flex-direction: column; gap: 8px; width: 74%; max-width: 300px; }
+.pad-grid.right { align-self: flex-end; }
+.pad-grid.left { align-self: flex-start; }
+.pad-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.bw-adjust { display: flex; align-items: center; gap: 8px; }
+.bw-step { width: 52px; height: var(--tap); flex-shrink: 0; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text); font-family: var(--font-num); font-weight: 700; font-size: 16px; }
+.bw-num { display: inline-flex; align-items: baseline; gap: 4px; flex: 1; justify-content: center; min-width: 0; }
+.bw-value { min-height: var(--tap); border: none; border-bottom: 2px solid var(--accent); background: transparent; color: var(--text); font-size: 32px; padding: 0 4px; }

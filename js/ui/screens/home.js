@@ -121,41 +121,62 @@ function goalEmpty() {
 
 /* ---------- 体重 ---------- */
 
-function bodyweightCard(today, todayBw, latestBw) {
+/**
+ * 今日の体重。初めてのときはキーボードで入れる。
+ * 一度でも記録があれば、前回の値から −0.1/+0.1 のボタンで調整して記録する(数字を押すとキーボードでも入れられる)
+ */
+function bodyweightCard(today, todayBw, latestBw, { keyboard = false } = {}) {
   const prev = todayBw ? null : latestBw; // 今日の記録がなければ直近の記録を「前回」として出す
-  const input = h('input', {
-    id: 'bw', class: 'big-input', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'done',
-    value: todayBw ? todayBw.kg.toFixed(1) : '', placeholder: prev ? prev.kg.toFixed(1) : '00.0',
-    'aria-describedby': 'bw-note',
-  });
-  const btn = h('button', { class: 'btn btn-light', type: 'submit' }, todayBw ? '更新' : '記録');
+  const base = todayBw || latestBw;
+  const head = h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '-10px', marginBottom: '-8px' } },
+    h('label', { for: 'bw', class: 'label' }, '今日の体重'),
+    h('a', { class: 'bw-link', href: '#/bodyweight' }, '推移・一覧'));
+  const note = h('span', { id: 'bw-note', class: 'label' },
+    todayBw ? '今日は記録済み' : prev ? `前回 ${prev.kg.toFixed(1)}(${formatDateShort(prev.date)})` : '');
 
-  async function onSubmit(e) {
-    e.preventDefault();
-    const raw = input.value.trim().replace(',', '.');
-    const kg = Number(raw);
-    if (!raw || !Number.isFinite(kg) || kg < 20 || kg > 300) {
-      toast('体重は 20〜300 の数字で入れてください');
-      input.focus();
-      return;
-    }
+  async function save(kg) {
+    if (!Number.isFinite(kg) || kg < 20 || kg > 300) { toast('体重は 20〜300 の数字で入れてください'); return false; }
     await saveBodyweight(today, Math.round(kg * 10) / 10);
-    input.blur();
     toast(`${kg.toFixed(1)}kg を記録しました`);
     renderHome();
+    return true;
   }
 
-  return h('form', { class: 'bw-card', 'aria-label': '今日の体重', onsubmit: onSubmit },
-    h('div', { class: 'bw-main' },
-      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '-10px', marginBottom: '-8px' } },
-        h('label', { for: 'bw', class: 'label' }, '今日の体重'),
-        h('a', { class: 'bw-link', href: '#/bodyweight' }, '推移・一覧')),
-      h('div', { class: 'bw-row' },
-        input,
-        h('span', { class: 'muted' }, 'kg'),
-        h('span', { id: 'bw-note', class: 'label', style: { marginLeft: '6px' } },
-          todayBw ? '今日は記録済み' : prev ? `前回 ${prev.kg.toFixed(1)}(${formatDateShort(prev.date)})` : ''))),
-    btn);
+  /* ---- 初めて、または数字を押したとき:キーボード ---- */
+  if (!base || keyboard) {
+    const input = h('input', {
+      id: 'bw', class: 'big-input', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'done',
+      value: base ? base.kg.toFixed(1) : '', placeholder: '00.0', 'aria-describedby': 'bw-note',
+    });
+    if (keyboard) setTimeout(() => { input.focus(); input.select(); }, 50);
+    return h('form', {
+      class: 'bw-card', 'aria-label': '今日の体重',
+      onsubmit: async (e) => {
+        e.preventDefault();
+        const raw = input.value.trim().replace(',', '.');
+        if (!(await save(raw ? Number(raw) : NaN))) input.focus();
+      },
+    },
+    h('div', { class: 'bw-main' }, head,
+      h('div', { class: 'bw-row' }, input, h('span', { class: 'muted' }, 'kg'), note)),
+    h('button', { class: 'btn btn-light', type: 'submit' }, todayBw ? '更新' : '記録'));
+  }
+
+  /* ---- 2回目から:前回の値を −0.1/+0.1 で調整 ---- */
+  let v = Math.round(base.kg * 10) / 10;
+  const num = h('button', {
+    id: 'bw', type: 'button', class: 'bw-value num', 'aria-label': `体重 ${v.toFixed(1)}kg(押すとキーボードで入れられます)`,
+    onclick: (e) => e.currentTarget.closest('.bw-card').replaceWith(bodyweightCard(today, todayBw, latestBw, { keyboard: true })),
+  }, v.toFixed(1));
+  const stepBtn = (d) => h('button', {
+    type: 'button', class: 'bw-step', 'aria-label': `${d > 0 ? '0.1増やす' : '0.1減らす'}`,
+    onclick: () => { v = Math.round((v + d) * 10) / 10; num.textContent = v.toFixed(1); num.setAttribute('aria-label', `体重 ${v.toFixed(1)}kg(押すとキーボードで入れられます)`); },
+  }, d > 0 ? '+0.1' : '−0.1');
+  return h('section', { class: 'bw-card', 'aria-label': '今日の体重' },
+    h('div', { class: 'bw-main' }, head,
+      h('div', { class: 'bw-adjust' }, stepBtn(-0.1), h('span', { class: 'bw-num' }, num, h('span', { class: 'muted' }, 'kg')), stepBtn(0.1)),
+      note),
+    h('button', { class: 'btn btn-light', type: 'button', onclick: () => save(v) }, todayBw ? '更新' : '記録'));
 }
 
 /* ---------- 記録中のトレーニング ---------- */

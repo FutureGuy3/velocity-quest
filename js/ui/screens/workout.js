@@ -310,7 +310,7 @@ export async function renderWorkout({ params }) {
         const start = before ? (side ? before[side][field] : before[field]) : lastRec?.[field] ?? null;
         openValuePad({
           title: `${ex?.name ?? ''} · セット ${setLabel(it, set)} · ${label}`,
-          value: target[field], start, steps: stepsFor(field, ex?.increment), anchor: btn,
+          value: target[field], start, steps: stepsFor(field, ex?.increment, ex?.equipment), anchor: btn,
           onChange: (v) => { target[field] = v; btn.setValue(v); scheduleSave(set); derivedFns.get(it.key)?.(); },
         });
       },

@@ -29,7 +29,11 @@ export async function seedIfNeeded() {
     const cur = await s.getExerciseRaw(e.id);
     if (cur) {
       // 版2で足した「水泳の目的」は、まだ持っていない種目にだけ入れる(利用者の編集は上書きしない)
-      if (cur.builtin && cur.swim === undefined) await s.putExercise({ ...cur, swim: e.swim || [] });
+      let upd = null;
+      if (cur.builtin && cur.swim === undefined) upd = { ...(upd || cur), swim: e.swim || [] };
+      // 版3:ダンベルの重さの刻みを 1kg に(初期値の 2kg・0.5kg のままの種目だけ。利用者が変えた刻みは残す)
+      if (done < 3 && cur.builtin && cur.equipment === 'ダンベル' && [2, 0.5].includes(cur.increment)) upd = { ...(upd || cur), increment: 1 };
+      if (upd) await s.putExercise(upd);
       continue;
     }
     await s.putExercise({

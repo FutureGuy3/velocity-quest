@@ -4,11 +4,17 @@
 import { h } from '../dom.js';
 import { round, fmt } from '../../domain/calc.js';
 
-/** 項目ごとの増減の幅(重さは種目の「重さの刻み」をもとにする) */
-export function stepsFor(field, increment) {
+/**
+ * 項目ごとの増減の幅(重さは種目の「重さの刻み」をもとにする)
+ * ダンベルは 1kg 刻みで並ぶので 刻み×1・×2・×5(刻み1kgなら 1・2・5)。
+ * それ以外は 刻み×1・×2・×4(バーベル 2.5・5・10、ケトルベル 4・8・16)。
+ */
+export function stepsFor(field, increment, equipment = null) {
   const inc = Number(increment) > 0 ? Number(increment) : 2.5;
   switch (field) {
-    case 'weight': case 'added': case 'assist': case 'platePerSide':
+    case 'weight': case 'added': case 'assist':
+      return equipment === 'ダンベル' ? [inc, round(inc * 2, 3), round(inc * 5, 3)] : [inc, round(inc * 2, 3), round(inc * 4, 3)];
+    case 'platePerSide':
       return [inc, round(inc * 2, 3), round(inc * 4, 3)];
     case 'reps': return [1, 5];
     case 'seconds': return [1, 5, 15];
@@ -20,6 +26,12 @@ export function stepsFor(field, increment) {
 }
 
 let current = null;
+
+const SIDE_KEY = 'vq.pad.side';
+/** ボタンの列を寄せる側(この端末で覚える) */
+function padSide() {
+  try { return localStorage.getItem(SIDE_KEY) === 'left' ? 'left' : 'right'; } catch { return 'right'; }
+}
 function closeCurrent() { current?.remove(); current = null; }
 
 /**
@@ -42,16 +54,29 @@ export function openValuePad({ title, unit = '', value, start = null, steps, min
   };
   const next = nextCell();
 
-  const cols = `repeat(${steps.length}, minmax(0, 1fr))`;
+  // −/+ を同じ幅で左右に並べ、ボタンの列を片手で届く側(左寄せ/右寄せ)に寄せる
+  const grid = h('div', { class: `pad-grid ${padSide()}` },
+    steps.map((s) => h('div', { class: 'pad-pair' },
+      h('button', { type: 'button', class: 'pad-btn minus', onclick: () => bump(-s), 'aria-label': `${fmt(s, 3)}減らす` }, `−${fmt(s, 3)}`),
+      h('button', { type: 'button', class: 'pad-btn plus', onclick: () => bump(s), 'aria-label': `${fmt(s, 3)}増やす` }, `+${fmt(s, 3)}`))));
+  const sideBtn = h('button', {
+    type: 'button', class: 'pad-side', 'aria-label': 'ボタンの寄せる側を切り替える',
+    onclick: () => {
+      const next = padSide() === 'right' ? 'left' : 'right';
+      try { localStorage.setItem(SIDE_KEY, next); } catch { /* 何もしない */ }
+      grid.className = `pad-grid ${next}`;
+      tools.className = `pad-tools ${next}`;
+      sideBtn.textContent = next === 'right' ? '左に寄せる' : '右に寄せる';
+    },
+  }, padSide() === 'right' ? '左に寄せる' : '右に寄せる');
+  const tools = h('div', { class: `pad-tools ${padSide()}` }, sideBtn);
   const backdrop = h('div', { class: 'pad-backdrop', onclick: (e) => { if (e.target === backdrop) closeCurrent(); } },
     h('div', { class: 'pad', role: 'dialog', 'aria-label': title },
       h('div', { class: 'pad-head' },
         h('span', { class: 'label' }, title),
         h('span', { class: 'pad-read' }, display, unit ? h('span', { class: 'pad-unit' }, unit) : null)),
-      h('div', { class: 'pad-steps', style: { gridTemplateColumns: cols } },
-        steps.map((s) => h('button', { type: 'button', class: 'pad-btn minus', onclick: () => bump(-s), 'aria-label': `${fmt(s, 3)}減らす` }, `−${fmt(s, 3)}`))),
-      h('div', { class: 'pad-steps', style: { gridTemplateColumns: cols } },
-        steps.map((s) => h('button', { type: 'button', class: 'pad-btn plus', onclick: () => bump(s), 'aria-label': `${fmt(s, 3)}増やす` }, `+${fmt(s, 3)}`))),
+      tools,
+      grid,
       h('div', { class: 'pad-actions' },
         h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => set(null) }, 'クリア'),
         next ? h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => { closeCurrent(); next.click(); } }, '次へ') : null,
