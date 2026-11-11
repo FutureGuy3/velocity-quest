@@ -5,8 +5,7 @@ import {
   getSettings, saveSettings, getExerciseMap, getExerciseProgress, reorderGoals, listBodyweights,
 } from '../../db/repo.js';
 import { openReorder } from '../components/reorder.js';
-import { compareSection, seriesSection } from './compare.js';
-import { startPool } from './pool.js';
+import { compareSection } from './compare.js';
 import { openPicker } from '../components/picker.js';
 import { actionSheet } from '../components/overlay.js';
 import { formatSet } from '../setFormat.js';
@@ -27,7 +26,7 @@ export async function renderMetrics() {
       h('span', { class: 'title' }, lastBw ? `${lastBw.kg.toFixed(1)}kg` : '記録なし'),
       h('span', { class: 'sub' }, lastBw ? `${formatDateShort(lastBw.date)} · 記録 ${bws.length}日分` : 'ホームか、ここから記録できます')),
     h('span', { style: { color: 'var(--faint)', display: 'inline-flex' } }, icon('forward', 18)));
-  const [compare, seriesList] = await Promise.all([compareSection(renderMetrics), seriesSection(renderMetrics)]);
+  const compare = await compareSection(renderMetrics);
   const settings = await getSettings();
   const exMap = await getExerciseMap();
   const tracked = (settings.trackedExercises || []).map((id) => exMap.get(id)).filter(Boolean);
@@ -68,10 +67,6 @@ export async function renderMetrics() {
         ? goals.map((g, i) => goalRow(g, bests[i], today))
         : h('p', { class: 'empty', style: { padding: '8px 4px' } }, '目標はまだありません。「+ 目標を作る」から作れます。')),
     h('div', { class: 'stack', style: { marginTop: '12px' } }, compare),
-    h('div', { class: 'section-head' },
-      h('h2', {}, '練習タイムの系統'),
-      h('button', { class: 'link-btn', type: 'button', onclick: startPool }, '+ タイムを入力')),
-    seriesList,
     h('div', { class: 'section-head' },
       h('h2', {}, '種目のベストの推移'),
       h('button', { class: 'link-btn', type: 'button', onclick: addTracked }, '+ 種目を追加')),

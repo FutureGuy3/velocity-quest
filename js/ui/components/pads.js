@@ -13,6 +13,8 @@ export function stepsFor(field, increment, equipment = null) {
   const inc = Number(increment) > 0 ? Number(increment) : 2.5;
   switch (field) {
     case 'weight': case 'added': case 'assist':
+      // マシンは半端な重さもあるので 1・5・10
+      if (equipment === 'マシン') return [1, 5, 10];
       return equipment === 'ダンベル' ? [inc, round(inc * 2, 3), round(inc * 5, 3)] : [inc, round(inc * 2, 3), round(inc * 4, 3)];
     case 'platePerSide':
       return [inc, round(inc * 2, 3), round(inc * 4, 3)];

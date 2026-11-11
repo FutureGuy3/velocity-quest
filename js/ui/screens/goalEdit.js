@@ -105,7 +105,7 @@ export async function renderGoalEdit({ params }) {
     if (!title) errors.push('名前を入れてください');
     if (target == null) errors.push(clock ? '目標値を数字で入れてください(例 30.00 や 1:02.50)' : '目標値を数字で入れてください');
     if ((st.metricType === 'trial' || st.metricType === 'e1rm') && !st.exerciseId) errors.push('種目を選んでください');
-    if (st.metricType === 'series' && !st.seriesId) errors.push('練習タイムの系統を選んでください(プール練習でタイムを記録すると系統ができます)');
+    if (st.metricType === 'series' && !st.seriesId) errors.push('練習タイムの系統を選んでください(スイム記録でタイムを入れると系統ができます)');
     let manualBest = null;
     if (st.metricType !== 'bodyweight' && st.bestValue.trim()) {
       const v = parseNumber(st.bestValue, { allowClock: clock });
@@ -399,7 +399,7 @@ export async function renderGoalEdit({ params }) {
           onchange: (e) => { st.seriesId = e.target.value; render(); },
         }, seriesList.map((s) => h('option', { value: s.id, selected: s.id === st.seriesId }, s.name)))),
         h('p', { class: 'hint', style: { marginTop: '-10px' } }, 'この系統の練習タイムからベストを出し、手で入れたベストと良い方を表示します。')]
-        : h('p', { class: 'hint' }, 'まだ系統がありません。プール練習でタイムを記録すると、条件ごとに系統ができます。')) : null,
+        : h('p', { class: 'hint' }, 'まだ系統がありません。スイム記録でタイムを入れると、条件ごとに系統ができます。')) : null,
       st.metricType === 'e1rm' ? [
         exerciseSelect(e1rmExercises),
         h('p', { class: 'hint', style: { marginTop: '-10px' } }, '10回以下のセットから計算します。加重懸垂は体重+加重で計算します。'),

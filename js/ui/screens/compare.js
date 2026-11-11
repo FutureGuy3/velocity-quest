@@ -219,7 +219,7 @@ async function chooseItems(ov, save) {
 
 export async function seriesSection(rerender) {
   const series = await listSeries();
-  if (!series.length) return h('p', { class: 'empty', style: { padding: '8px 4px' } }, 'プール練習でタイムを記録すると、条件ごとに系統ができます。');
+  if (!series.length) return h('p', { class: 'empty', style: { padding: '8px 4px' } }, 'スイム記録でタイムを入れると、条件ごとに系統ができます。');
   const sums = await Promise.all(series.map((s) => getSeriesSummary(s.id)));
   return h('div', { class: 'stack' }, series.map((s, i) => h('button', {
     type: 'button', class: 'goal-row', style: { textAlign: 'left', width: '100%' }, onclick: () => editSeries(s, rerender),

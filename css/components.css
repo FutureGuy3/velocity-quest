@@ -58,7 +58,7 @@
   min-height: var(--nav-h);
   padding: 8px 12px max(24px, env(safe-area-inset-bottom));
   background: var(--nav-bg); border-top: 1px solid var(--nav-line);
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 .bottom-nav[hidden] { display: none; }
 .bottom-nav a {
@@ -558,3 +558,13 @@ button.target-row { width: 100%; background: transparent; border: none; border-t
 
 /* ---- テスト版の帯 ---- */
 .preview-banner { position: sticky; top: 0; z-index: 40; background: var(--warm); color: var(--bg); text-align: center; font-size: 12px; font-weight: 700; padding: 4px 8px; }
+
+/* ---- 種目ごとのメモ ---- */
+.item-memo { display: flex; flex-direction: column; gap: 6px; }
+.past-memos { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--card-deep); border: 1px solid var(--line); }
+.past-memos p { font-size: 13px; color: var(--text-2); }
+.past-memos .date { font-family: var(--font-num); font-weight: 700; color: var(--muted); margin-right: 8px; }
+.memo-input { min-height: 52px; font-size: 14px; }
+.ex-cards > .link-row { margin: -4px 0; }
+.detail-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 12px; }
+.detail-memo { font-size: 13px; color: var(--text-2); border-top: 1px solid #1F1F23; padding-top: 6px; margin-top: 4px; white-space: pre-wrap; }

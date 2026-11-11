@@ -13,7 +13,7 @@ import { renderWorkoutStart, renderWorkout } from './ui/screens/workout.js';
 import { renderHistory, renderHistoryDetail } from './ui/screens/history.js';
 import { renderTrialEdit } from './ui/screens/trialEdit.js';
 import { renderBodyweight } from './ui/screens/bodyweight.js';
-import { renderPool } from './ui/screens/pool.js';
+import { renderPool, renderSwimTab } from './ui/screens/pool.js';
 
 /** テスト版だけ、画面の上に目立つ帯を出す(本番と見間違えないように) */
 function previewBanner() {
@@ -25,7 +25,8 @@ function buildNav() {
   const nav = document.getElementById('nav');
   const items = [
     ['home', '#/home', 'ホーム', 'home'],
-    ['workout', '#/workout', 'トレーニング', 'dumbbell'],
+    ['workout', '#/workout', 'ジム', 'dumbbell'],
+    ['swim', '#/swim', 'スイム', 'swim'],
     ['metrics', '#/metrics', '指標', 'chart'],
     ['history', '#/history', '履歴', 'calendar'],
   ];
@@ -43,6 +44,7 @@ function registerRoutes() {
   route('/settings', () => renderSettings());
   route('/bodyweight', () => renderBodyweight());
   route('/pool/:id', (r) => renderPool(r));
+  route('/swim', () => renderSwimTab());
   route('/routine/new', (r) => renderRoutineEdit(r));
   route('/routine/:id', (r) => renderRoutineEdit(r));
   route('/trial/new', (r) => renderTrialEdit(r));

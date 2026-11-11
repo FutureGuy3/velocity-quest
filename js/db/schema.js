@@ -2,6 +2,7 @@
 // 形を変えるときは version(n+1) を足し、必要なら .upgrade() で移行処理を書く。
 // 画面からこのファイルを import しないこと(読み書きは repo.js を通す)。
 import Dexie from '../../vendor/dexie.mjs';
+import { seriesAutoName, seriesAutoNameV5 } from '../domain/swim.js';
 
 // テスト版(URL に /preview/ を含む)は本番と別のデータベースを使い、本物の記録に触れない
 export const IS_PREVIEW = typeof location !== 'undefined' && location.pathname.includes('/preview/');
@@ -61,6 +62,38 @@ export function openDb() {
     poolSessions: 'id, updatedAt, date, status',
     swimTimes: 'id, updatedAt, sessionId, seriesId, [seriesId+date]',
     series: 'id, updatedAt, key',
+  });
+
+  // 版6:
+  //  ・片側の記録方式を「両側/片側(左右2段)」の2つに。「片側・左右同じ」(same)のセットは左右2段に直す
+  //  ・メモを種目ごと1つに。セットごとのメモは、その練習の種目のメモにまとめる
+  //  ・計測の表記が変わったので、自動で付いた系統の名前を新しい表記に直す(利用者が付けた名前はそのまま)
+  db.version(6).stores({}).upgrade(async (tx) => {
+    const SIDE_FIELDS = ['weight', 'added', 'assist', 'reps', 'seconds', 'heightCm', 'contacts', 'distance', 'band'];
+    await tx.table('sets').toCollection().modify((x) => {
+      if (x.sideMode !== 'same') return;
+      const v = {};
+      for (const f of SIDE_FIELDS) if (x[f] != null) v[f] = x[f];
+      x.left = { ...v }; x.right = { ...v }; x.sideMode = 'split';
+    });
+    const sets = await tx.table('sets').toArray();
+    await tx.table('workouts').toCollection().modify((w) => {
+      w.items = (w.items || []).map((it) => {
+        const out = { ...it, sideMode: it.sideMode === 'same' ? 'split' : it.sideMode };
+        if (!out.memo) {
+          let n = 0;
+          const memos = sets.filter((x) => x.workoutId === w.id && x.itemKey === it.key && !x.deleted)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+            .map((x) => { const label = x.warmup ? 'W' : String(++n); return x.memo ? `セット${label}:${x.memo}` : null; })
+            .filter(Boolean);
+          if (memos.length) out.memo = memos.join(' / ');
+        }
+        return out;
+      });
+    });
+    await tx.table('series').toCollection().modify((s) => {
+      if (s.conditions && s.name === seriesAutoNameV5(s.conditions)) s.name = seriesAutoName(s.conditions);
+    });
   });
 
   return db;

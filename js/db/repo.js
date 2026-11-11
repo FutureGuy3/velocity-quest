@@ -285,9 +285,13 @@ async function plannedSets(workout, item, plans, startOrder, count = 1) {
   });
 }
 
-/** ルーティンから(またはルーティンなしで)開始。ルーティンはコピーして使い、予定のセットを用意する */
-export async function startWorkout({ routineId = null } = {}) {
-  const today = localDate();
+/**
+ * ルーティンから(またはルーティンなしで)開始。ルーティンはコピーして使い、予定のセットを用意する
+ * date を渡すと過去の日付で記録する(スマホを忘れた日など。経過時間とタイマーは出さない)
+ */
+export async function startWorkout({ routineId = null, date = null } = {}) {
+  const today = date || localDate();
+  const backfill = !!date && date !== localDate();
   let items = [];
   let title = 'フリー';
   let routine = null;
@@ -315,6 +319,7 @@ export async function startWorkout({ routineId = null } = {}) {
     memo: '',
     items,
     timer: null,
+    backfill,
   });
   const exMap = await getExerciseMap();
   let order = 1;
@@ -349,6 +354,52 @@ export async function addWorkoutItems(workoutId, exerciseIds) {
     for (const st of await plannedSets(w, item, null, order, 1)) { await put('sets', st); order++; }
   }
   return put('workouts', { ...w, items });
+}
+
+/** 練習の日付を変える(セットと試技の日付も合わせる) */
+export async function setWorkoutDate(workoutId, date) {
+  const w = await db.workouts.get(workoutId);
+  if (!w) return null;
+  for (const x of await listSets(workoutId)) await put('sets', { ...x, date });
+  for (const t of (await db.trials.where('workoutId').equals(workoutId).toArray()).filter(alive)) await put('trials', { ...t, date });
+  const bw = await getLatestBodyweight(date);
+  return put('workouts', { ...w, date, bodyweight: w.bodyweight ?? (bw ? bw.kg : null) });
+}
+
+/** その種目の過去のメモ(日付つき、新しい順に limit 件)。今の練習は除く */
+export async function getRecentExerciseMemos(exerciseId, { excludeWorkoutId = null, limit = 3 } = {}) {
+  const out = [];
+  for (const w of await listWorkouts()) {
+    if (w.id === excludeWorkoutId) continue;
+    for (const it of w.items || []) {
+      if (it.exerciseId === exerciseId && it.memo && it.memo.trim()) out.push({ date: w.date, memo: it.memo.trim(), workoutId: w.id });
+    }
+    if (out.length >= limit) break;
+  }
+  return out.slice(0, limit);
+}
+
+/** 履歴の練習を、新しいルーティンとして保存する(完了したセットの重さ・回数・休憩を予定にする) */
+export async function createRoutineFromWorkout(workoutId, name) {
+  const w = await getWorkout(workoutId);
+  if (!w) return null;
+  const sets = await listSets(workoutId);
+  const keyMap = new Map(w.items.map((it) => [it.key, newId()]));
+  const items = w.items.map((it) => {
+    const mine = sets.filter((x) => x.itemKey === it.key && x.done);
+    return {
+      key: keyMap.get(it.key), exerciseId: it.exerciseId, restSec: it.restSec ?? DEFAULT_REST_SEC, pap: !!it.pap,
+      link: it.link && keyMap.has(it.link.toKey) ? { ...it.link, toKey: keyMap.get(it.link.toKey) } : null,
+      setPlans: mine.map((x) => {
+        const src = x.sideMode === 'split' ? (x.left || {}) : x;
+        const p = { warmup: !!x.warmup, restSec: x.restSec ?? it.restSec ?? DEFAULT_REST_SEC };
+        for (const f of SET_VALUE_FIELDS) if (src[f] != null && src[f] !== '') p[f] = src[f];
+        return p;
+      }),
+    };
+  });
+  const order = (await listRoutines()).length + 1;
+  return put('routines', { name, items: normalizeLinks(items), order });
 }
 
 /** セットを1つ足す(直前のセットの値を引き継ぐ) */
@@ -769,9 +820,23 @@ export function deleteGoal(id) { return remove('goals', id); }
 
 /* ===================== プール(段階2) ===================== */
 
-/** プール練習を始める(環境:short / long / private) */
-export async function startPoolSession({ environment = 'short' } = {}) {
-  return put('poolSessions', { date: localDate(), startedAt: nowIso(), endedAt: null, status: 'active', environment, memo: '' });
+/** スイム記録を始める(date を渡すと過去の日付で記録できる) */
+export async function startPoolSession({ date = null } = {}) {
+  return put('poolSessions', { date: date || localDate(), startedAt: nowIso(), endedAt: null, status: 'active', memo: '' });
+}
+
+/** スイム記録の日付を変える(タイムの日付も合わせる) */
+export async function setPoolSessionDate(id, date) {
+  const s = await db.poolSessions.get(id);
+  if (!s) return null;
+  for (const t of (await db.swimTimes.where('sessionId').equals(id).toArray()).filter(alive)) await put('swimTimes', { ...t, date });
+  return put('poolSessions', { ...s, date });
+}
+
+/** 最近のスイム記録(完了したもの、新しい順) */
+export async function listRecentPoolSessions(limit = 10) {
+  const rows = await listPoolSessions();
+  return Promise.all(rows.slice(0, limit).map(async (s) => ({ session: s, times: await listSwimTimes(s.id) })));
 }
 export async function getActivePoolSession() {
   const rows = await db.poolSessions.where('status').equals('active').toArray();

@@ -1,20 +1,26 @@
-// 水泳(プール)の条件・系統・タイムの決まり。計算は純粋関数で、tests/calc.test.html で確かめる
+// スイム(水泳)の条件・系統・タイムの決まり。計算は純粋関数で、tests/calc.test.html で確かめる
 import { round } from './calc.js';
 
 /** 条件の選択肢(値は保存用の短い記号、label は画面の文字) */
 export const CONDITIONS = [
   { key: 'pool', label: 'プール', options: [['short', '短水路'], ['long', '長水路']] },
+  // 距離は 15/25/50/100m のほかに任意の距離(m)も入れられる(画面で「任意」を押す)
   { key: 'distance', label: '距離', options: [[15, '15m'], [25, '25m'], [50, '50m'], [100, '100m']] },
-  { key: 'stroke', label: '泳法', options: [['free', '自由形'], ['fly', 'バタフライ'], ['back', '背泳ぎ'], ['breast', '平泳ぎ']] },
+  { key: 'stroke', label: '泳法', options: [['free', '自由形'], ['fly', 'バタフライ'], ['back', '背泳ぎ'], ['breast', '平泳ぎ'], ['im', '個人メドレー']] },
   { key: 'start', label: 'スタート', options: [['push', '壁を蹴って'], ['dive', '飛び込み']] },
-  { key: 'timing', label: '計測', options: [['hand', '指ウォッチ'], ['buddy', '仲間'], ['video', '動画'], ['official', '大会公式']] },
+  { key: 'timing', label: '計測', options: [['hand', '自分(手動)'], ['buddy', '仲間(手動)'], ['video', '動画'], ['official', '大会公式']] },
   { key: 'gear', label: '器具', options: [['none', 'なし'], ['fins', 'フィン'], ['paddles', 'パドル'], ['both', 'フィン+パドル'], ['other', 'その他']] },
 ];
 
 export const DEFAULT_CONDITIONS = { pool: 'short', distance: 25, stroke: 'free', start: 'push', timing: 'hand', gear: 'none', gearOther: '' };
 
-/** プール練習の環境 */
-export const ENVIRONMENTS = [['short', '短水路'], ['long', '長水路'], ['private', '貸し切り']];
+/** 版5で付けていた系統の自動の名前(計測の表記が「指ウォッチ」「仲間」だったころ)。名前の直しに使う */
+export function seriesAutoNameV5(c) {
+  const n = normalizeConditions(c);
+  const old = { hand: '指ウォッチ', buddy: '仲間', video: '動画', official: '大会公式' };
+  const gear = n.gear === 'none' ? '' : `・${n.gear === 'other' ? (n.gearOther || 'その他') : optionLabel('gear', n.gear)}`;
+  return `${optionLabel('pool', n.pool)}${n.distance}m ${optionLabel('stroke', n.stroke)}・${n.start === 'dive' ? '飛び込み' : '壁'}・${old[n.timing] || n.timing}${gear}`;
+}
 
 export function optionLabel(key, value) {
   const c = CONDITIONS.find((x) => x.key === key);

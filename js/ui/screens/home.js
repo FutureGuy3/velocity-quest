@@ -9,8 +9,6 @@ import {
 } from '../../db/repo.js';
 import { goalTexts } from '../goalFormat.js';
 import { navigate } from '../../router.js';
-import { startPool } from './pool.js';
-import { getActivePoolSession } from '../../db/repo.js';
 import { actionSheet } from '../components/overlay.js';
 import { PRESETS } from '../../domain/presets.js';
 import { createRoutineFromPreset } from '../../db/repo.js';
@@ -32,9 +30,9 @@ export function choosePreset() {
 
 export async function renderHome() {
   const today = localDate();
-  const [goals, active, routines, lastDates, todayBw, latestBw, activePool] = await Promise.all([
+  const [goals, active, routines, lastDates, todayBw, latestBw] = await Promise.all([
     getPinnedGoals(), getActiveWorkout(), listRoutines(), getRoutineLastDates(),
-    getBodyweightOn(today), getLatestBodyweight(), getActivePoolSession(),
+    getBodyweightOn(today), getLatestBodyweight(),
   ]);
   const bests = await Promise.all(goals.map((g) => getGoalBest(g)));
 
@@ -47,26 +45,15 @@ export async function renderHome() {
 
     goals.length ? goalCarousel(goals, bests, today) : goalEmpty(),
     bodyweightCard(today, todayBw, latestBw),
-    active ? activeCard(active) : null,
-    activePool ? h('section', { class: 'active-card', 'aria-label': '記録中のプール練習' },
-      h('div', {},
-        h('p', { class: 'label', style: { color: '#4DA3FF', fontWeight: 700 } }, '記録中のプール練習'),
-        h('p', { style: { fontSize: '15px', fontWeight: 700 } }, formatDateJa(activePool.date))),
-      h('div', { class: 'row' }, h('button', { class: 'btn btn-primary', onclick: () => navigate(`/pool/${activePool.id}`) }, '再開'))) : null,
 
+    // ホームは 目標・体重・ルーティン(▶で開始)だけ。作成・編集と記録中の再開はジムタブ
     h('div', { class: 'section-head' },
       h('h2', {}, 'ルーティン'),
-      h('div', { style: { display: 'flex', gap: '16px' } },
-        h('button', { class: 'link-btn', type: 'button', onclick: choosePreset }, 'プリセット'),
-        h('a', { href: '#/routine/new' }, '+ 新規作成'))),
+      h('a', { href: '#/workout' }, 'ジムで編集')),
     h('div', { class: 'stack' },
       routines.length
         ? routines.map((r) => routineRow(r, lastDates.get(r.id), active))
-        : h('p', { class: 'empty', style: { padding: '8px 4px' } }, 'ルーティンはまだありません。「+ 新規作成」から作れます。'),
-      h('button', { class: 'btn btn-dashed btn-block', onclick: () => start(null, active) }, 'ルーティンなしで開始')),
-    h('div', { class: 'section-head' }, h('h2', {}, 'プール')),
-    h('div', { class: 'stack' },
-      h('button', { class: 'btn btn-ghost btn-block pool-start', onclick: startPool }, activePool ? 'プール練習を再開' : 'プール練習を始める(タイム入力)')),
+        : h('p', { class: 'empty', style: { padding: '8px 4px' } }, 'ルーティンはまだありません。ジムタブで作れます。')),
 
     h('p', { class: 'version-note' }, `版 ${self.VQ_VERSION}`),
   ), { showNav: true, navKey: 'home' });
@@ -217,7 +204,7 @@ async function discard(w) {
 function routineRow(r, lastDate, active) {
   const meta = `${r.items.length}種目 · ${lastDate ? `前回 ${formatDateShort(lastDate)}` : '未実施'}`;
   return h('div', { class: 'routine-row' },
-    h('a', { class: 'info', href: `#/routine/${r.id}`, 'aria-label': `${r.name}を編集` },
+    h('div', { class: 'info' },
       h('span', { class: 'name' }, r.name),
       h('span', { class: 'meta' }, meta)),
     h('button', { class: 'play-btn', 'aria-label': `${r.name}を開始`, onclick: () => start(r.id, active) }, icon('play')));

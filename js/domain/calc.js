@@ -211,3 +211,29 @@ export function formatSeconds(sec, digits = 2) {
   const rest = (a - m * 60).toFixed(digits).padStart(digits + 3, '0');
   return `${sign}${m}:${rest}`;
 }
+
+/**
+ * 1回の練習の合計(本番のセットだけ。ウォームアップは除く)
+ * sets: 完了したセット。recordTypeOf(exerciseId) で記録の型を返す。bodyweight はその日の体重
+ * 総挙上重量:重さ×回数の合計。片側は左右を足す。自重+加重は(体重+加重)、自重−アシストは(体重−アシスト)で数える
+ * → { volume, exercises, sets, reps }
+ */
+export function workoutTotals(sets, recordTypeOf, bodyweight = null) {
+  let volume = 0, reps = 0, count = 0;
+  const exercises = new Set();
+  for (const s of sets) {
+    if (!s || s.warmup || !s.done) continue;
+    const rt = recordTypeOf(s.exerciseId);
+    if (rt === 'trials') continue;
+    count++;
+    exercises.add(s.exerciseId);
+    const sides = s.sideMode === 'split' ? [s.left || {}, s.right || {}] : [s];
+    for (const side of sides) {
+      const r = num(side.reps) ?? 0;
+      reps += r;
+      const load = rt === 'weight_reps' ? num(side.weight) : effectiveLoad(rt, side, bodyweight);
+      if (load != null && r) volume += load * r;
+    }
+  }
+  return { volume: round(volume, 1), exercises: exercises.size, sets: count, reps };
+}

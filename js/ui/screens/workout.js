@@ -1,8 +1,8 @@
 // トレーニング記録(記録中/過去の練習の編集)
-import { h, icon, mount, toast, onUnmount, faceIcon, formatDateJa, FACE_COLORS } from '../dom.js';
+import { h, icon, mount, toast, onUnmount, faceIcon, formatDateJa, formatDateShort, FACE_COLORS } from '../dom.js';
 import { openReorder } from '../components/reorder.js';
 import { openPicker } from '../components/picker.js';
-import { actionSheet } from '../components/overlay.js';
+import { actionSheet, openOverlay } from '../components/overlay.js';
 import { createRestTimer, unlockAudio } from '../components/restTimer.js';
 import { keepScreenOn, allowScreenOff } from '../components/wakeLock.js';
 import { openValuePad, openRestPicker, cellButton, stepsFor, restText } from '../components/pads.js';
@@ -11,7 +11,7 @@ import {
   getLastSets, getBestSet, addWorkoutItems, removeWorkoutItem, finishWorkout, deleteWorkout,
   workoutDiffersFromRoutine, applyWorkoutToRoutine, getWorkoutTrial, saveTrial,
   saveBodyweight, getActiveWorkout, listRoutines, startWorkout, normalizeLinks, LINK_TYPES,
-  changeWorkoutItemExercise,
+  changeWorkoutItemExercise, getRoutineLastDates, localDate, setWorkoutDate, getRecentExerciseMemos,
 } from '../../db/repo.js';
 import {
   totalWeight, effectiveLoad, bodyweightRatio, formatElapsed, parseNumber, fmt, trialStats, round,
@@ -20,33 +20,59 @@ import { recordTypeLabel, SIDE_MODES, FACES, PAP_REST_SEC, DEFAULT_REST_SEC } fr
 import { FIELD_META, TYPE_FIELDS, formatSet, summarizeSets } from '../setFormat.js';
 import { navigate, back } from '../../router.js';
 import { choosePreset } from './home.js';
-import { startPool } from './pool.js';
 
 /* ======================= #/workout(開始画面) ======================= */
 
 export async function renderWorkoutStart() {
-  const active = await getActiveWorkout();
-  if (active) { navigate(`/workout/${active.id}`, { replace: true }); return; }
-  const routines = await listRoutines();
-  const start = async (routineId) => {
-    const w = await startWorkout({ routineId });
+  const [active, routines, lastDates] = await Promise.all([getActiveWorkout(), listRoutines(), getRoutineLastDates()]);
+  const start = async (routineId, date = null) => {
+    if (active && !date) {
+      if (confirm('記録中のトレーニングがあります。そちらを開きますか?')) navigate(`/workout/${active.id}`);
+      return;
+    }
+    const w = await startWorkout({ routineId, date });
     navigate(`/workout/${w.id}`);
   };
+  // 過去の日付で記録(スマホを忘れた日など):日付を選んでから、ルーティンを選ぶ
+  const startPast = () => openOverlay({
+    title: '日付を選んで記録',
+    render(api) {
+      const dIn = h('input', { id: 'past-date', class: 'input', type: 'date', max: localDate(), value: localDate() });
+      const go = (routineId) => { const d = dIn.value || localDate(); api.close(); start(routineId, d); };
+      return h('div', { class: 'form' },
+        h('div', { class: 'field' }, h('label', { for: 'past-date' }, '練習した日'), dIn),
+        h('p', { class: 'hint' }, '過去の日付の記録では、経過時間と休憩タイマーは出しません。'),
+        routines.map((r) => h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: () => go(r.id) }, `「${r.name}」で記録`)),
+        h('button', { class: 'btn btn-dashed btn-block', type: 'button', onclick: () => go(null) }, 'ルーティンなしで記録'));
+    },
+  });
+  const discard = async () => {
+    if (!confirm('記録中のトレーニングを破棄しますか?入力したセットも消えます。')) return;
+    await deleteWorkout(active.id); toast('破棄しました'); renderWorkoutStart();
+  };
   mount(h('div', {},
-    h('header', { class: 'topbar' }, h('div', { class: 'topbar-title' }, h('h1', { class: 'topbar-h' }, 'トレーニング'))),
-    h('div', { class: 'section-head', style: { paddingTop: '8px' } }, h('h2', {}, 'ルーティンから開始'),
+    h('header', { class: 'topbar' }, h('div', { class: 'topbar-title' }, h('h1', { class: 'topbar-h' }, 'ジム'))),
+    active ? h('section', { class: 'active-card', 'aria-label': '記録中のトレーニング' },
+      h('div', {},
+        h('p', { class: 'label', style: { color: 'var(--accent)', fontWeight: 700 } }, '記録中'),
+        h('p', { style: { fontSize: '15px', fontWeight: 700 } }, active.title || 'トレーニング'),
+        h('p', { class: 'label' }, `${formatDateJa(active.date)} · ${active.items.length}種目`)),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-primary', onclick: () => navigate(`/workout/${active.id}`) }, '再開'),
+        h('button', { class: 'btn btn-ghost', onclick: discard }, '破棄'))) : null,
+    h('div', { class: 'section-head', style: { paddingTop: '8px' } }, h('h2', {}, 'ルーティン'),
       h('div', { style: { display: 'flex', gap: '16px' } },
         h('button', { class: 'link-btn', type: 'button', onclick: choosePreset }, 'プリセット'),
         h('a', { href: '#/routine/new' }, '+ 新規作成'))),
     h('div', { class: 'stack' },
       routines.length ? routines.map((r) => h('div', { class: 'routine-row' },
-        h('a', { class: 'info', href: `#/routine/${r.id}` },
-          h('span', { class: 'name' }, r.name), h('span', { class: 'meta' }, `${r.items.length}種目`)),
+        h('a', { class: 'info', href: `#/routine/${r.id}`, 'aria-label': `${r.name}を編集` },
+          h('span', { class: 'name' }, r.name),
+          h('span', { class: 'meta' }, `${r.items.length}種目 · ${lastDates.get(r.id) ? `前回 ${formatDateShort(lastDates.get(r.id))}` : '未実施'} · 押して編集`)),
         h('button', { class: 'play-btn', 'aria-label': `${r.name}を開始`, onclick: () => start(r.id) }, icon('play'))))
-        : h('p', { class: 'empty', style: { padding: '8px 4px' } }, 'ルーティンはまだありません。'),
-      h('button', { class: 'btn btn-dashed btn-block', onclick: () => start(null) }, 'ルーティンなしで開始')),
-    h('div', { class: 'section-head' }, h('h2', {}, 'プール')),
-    h('div', { class: 'stack' }, h('button', { class: 'btn btn-ghost btn-block pool-start', onclick: startPool }, 'プール練習を始める(タイム入力)')),
+        : h('p', { class: 'empty', style: { padding: '8px 4px' } }, 'ルーティンはまだありません。「+ 新規作成」か「プリセット」から作れます。'),
+      h('button', { class: 'btn btn-dashed btn-block', onclick: () => start(null) }, 'ルーティンなしで開始'),
+      h('button', { class: 'btn btn-ghost btn-block', onclick: startPast }, '日付を選んで記録(過去の分)')),
   ), { showNav: true, navKey: 'workout' });
 }
 
@@ -56,6 +82,8 @@ export async function renderWorkout({ params }) {
   let w = await getWorkout(params.id);
   if (!w) { toast('練習が見つかりません'); navigate('/home', { replace: true }); return; }
   const live = w.status === 'active';
+  // 過去の日付で記録しているときは、経過時間・休憩タイマー・消灯防止を使わない
+  const timed = live && !w.backfill;
   let exMap = await getExerciseMap();
   let sets = await listSets(w.id);
   const gearCache = new Map();
@@ -64,6 +92,7 @@ export async function renderWorkout({ params }) {
   const activeSet = new Map();   // itemKey → setId
   const cardEls = new Map();     // itemKey → element
   const derivedFns = new Map();  // itemKey → () => void(表示の更新)
+  const autoFilled = new Set();  // 片側で反対側から自動で入れた値(手で直すまで追いかける)
 
   async function loadInfo() {
     for (const it of w.items) {
@@ -73,6 +102,7 @@ export async function renderWorkout({ params }) {
         info.set(ex.id, {
           last: await getLastSets(ex.id, { excludeWorkoutId: w.id }),
           best: await getBestSet(ex.id, ex.recordType, { excludeWorkoutId: w.id }),
+          memos: await getRecentExerciseMemos(ex.id, { excludeWorkoutId: w.id }),
         });
       }
       if (ex.gearId && !gearCache.has(ex.gearId)) gearCache.set(ex.gearId, await getGear(ex.gearId));
@@ -100,7 +130,7 @@ export async function renderWorkout({ params }) {
   const bodyweight = () => (w.bodyweight != null ? Number(w.bodyweight) : null);
 
   /* ---------- 休憩タイマー ---------- */
-  const timer = live ? createRestTimer({
+  const timer = timed ? createRestTimer({
     initial: w.timer,
     onChange: (state) => { w.timer = state; saveW(); },
   }) : null;
@@ -150,7 +180,7 @@ export async function renderWorkout({ params }) {
     unlockAudio();
     set.done = !set.done;
     await saveSet(set);
-    if (!set.done || !live) { redrawCard(it); return; }
+    if (!set.done || !timer) { redrawCard(it); return; }
 
     const mine = itemSets(it.key);
     const nextSet = mine.find((x) => !x.done);
@@ -314,7 +344,23 @@ export async function renderWorkout({ params }) {
         openValuePad({
           title: `${ex?.name ?? ''} · セット ${setLabel(it, set)} · ${label}`,
           value: target[field], start, steps: stepsFor(field, ex?.increment, ex?.equipment), anchor: btn,
-          onChange: (v) => { target[field] = v; btn.setValue(v); scheduleSave(set); derivedFns.get(it.key)?.(); },
+          onChange: (v) => {
+            target[field] = v; btn.setValue(v);
+            // 片側:反対側が空なら同じ値を入れておく(違う重さにするときは、あとで直せばよい)
+            if (side) {
+              const other = side === 'left' ? 'right' : 'left';
+              set[other] = set[other] || {};
+              const otherKey = `${set.id}:${other}:${field}`;
+              if (set[other][field] == null || autoFilled.has(otherKey)) {
+                set[other][field] = v;
+                autoFilled.add(otherKey);
+                const ob = btn.closest('.set-row')?.querySelector(`.cell-btn[aria-label="${other === 'left' ? '左 ' : '右 '}${meta.label}"]`);
+                ob?.setValue(v);
+              }
+              autoFilled.delete(`${set.id}:${side}:${field}`);
+            }
+            scheduleSave(set); derivedFns.get(it.key)?.();
+          },
         });
       },
     });
@@ -344,11 +390,7 @@ export async function renderWorkout({ params }) {
             await saveSet(set);
             redrawCard(it);
           },
-        }, faceIcon(i + 1, 28)))),
-      h('input', {
-        class: 'input', placeholder: 'メモ', value: set.memo || '', 'aria-label': `セット ${label} のメモ`,
-        oninput: (e) => { set.memo = e.target.value; scheduleSave(set); },
-      }));
+        }, faceIcon(i + 1, 28)))));
   }
 
   function setLabel(it, set) {
@@ -451,7 +493,7 @@ export async function renderWorkout({ params }) {
 
     return h('article', { class: `ex-card${it.pap ? ' pap' : ''}`, 'data-key': it.key },
       cardHead(it, i, ex),
-      ex.unilateral ? h('div', { class: 'segmented side-modes', role: 'radiogroup', 'aria-label': '左右の記録方法' },
+      ex.recordType !== 'trials' ? h('div', { class: 'segmented side-modes', role: 'radiogroup', 'aria-label': '左右の記録方法' },
         Object.entries(SIDE_MODES).map(([k, label]) => h('button', {
           type: 'button', role: 'radio', 'aria-checked': String(mode === k), onclick: () => setSideMode(it, k),
         }, label))) : null,
@@ -460,6 +502,7 @@ export async function renderWorkout({ params }) {
         lastText ? `前回 ${lastText}` : '', lastText && bestText ? ' · ' : '', bestText ? `自己ベスト ${bestText}` : '') : null,
       h('div', { class: 'set-table' }, header, rows),
       mine.length ? facePanel(it) : null,
+      itemMemo(it, ex),
       h('div', { class: 'card-actions' },
         h('button', { class: 'btn btn-ghost', type: 'button', onclick: async () => {
           const s = await addSet(w, it); sets = await listSets(w.id); activeSet.set(it.key, s.id); redrawCard(it);
@@ -612,6 +655,45 @@ export async function renderWorkout({ params }) {
     navigate('/home', { replace: true });
   }
 
+  /** 種目ごとのメモ。前回までのメモ(新しい順に3つ)を日付つきで出す */
+  function itemMemo(it, ex) {
+    const past = info.get(it.exerciseId)?.memos || [];
+    let t = null;
+    return h('div', { class: 'item-memo' },
+      past.length ? h('div', { class: 'past-memos' },
+        h('span', { class: 'label' }, '前回までのメモ'),
+        past.map((m) => h('p', {}, h('span', { class: 'date' }, formatDateShort(m.date)), m.memo))) : null,
+      h('textarea', {
+        class: 'input textarea memo-input', rows: 2, placeholder: `${ex?.name ?? 'この種目'}のメモ(次回、日付つきで出ます)`,
+        'aria-label': `${ex?.name ?? ''}のメモ`,
+        oninput: (e) => { it.memo = e.target.value; clearTimeout(t); t = setTimeout(saveW, 500); },
+      }, it.memo || ''));
+  }
+
+  /** 種目と種目の間:次の種目とつなぐ/この位置に種目を追加 */
+  function betweenRow(it, next) {
+    const add = () => openPicker({
+      context: `${nameOf(it)} のあとに追加`,
+      onDone: async (ids) => {
+        const before = new Set(w.items.map((x) => x.key));
+        w = await addWorkoutItems(w.id, ids);
+        const added = w.items.filter((x) => !before.has(x.key));
+        const rest = w.items.filter((x) => before.has(x.key));
+        const at = rest.findIndex((x) => x.key === it.key) + 1;
+        if (it.link) { it.link = null; toast('つないでいた種目の間に入れたので、つなぎを外しました'); }
+        w.items = normalizeLinks([...rest.slice(0, at).map((x) => (x.key === it.key ? { ...x, link: null } : x)), ...added, ...rest.slice(at)]);
+        await saveW();
+        exMap = await getExerciseMap(); sets = await listSets(w.id); await loadInfo();
+        draw(true);
+      },
+    });
+    return h('div', { class: 'link-row' },
+      it.link
+        ? h('button', { class: `link-chip ${it.link.type}`, type: 'button', onclick: () => linkMenu(it, next) }, icon('link', 16), LINK_TYPES[it.link.type])
+        : h('button', { class: 'link-add', type: 'button', onclick: () => linkMenu(it, next) }, '+ 次の種目とつなぐ'),
+      h('button', { class: 'link-add', type: 'button', onclick: add }, '+ 種目を追加'));
+  }
+
   /* ---------- 画面 ---------- */
   let first = true;
   function draw(keepScroll = false) {
@@ -619,13 +701,13 @@ export async function renderWorkout({ params }) {
     const sub = h('span', { class: 'topbar-sub' });
     const updateSub = () => {
       const bw = bodyweight() != null ? ` · 体重 ${bodyweight().toFixed(1)}kg` : '';
-      sub.textContent = live
+      sub.textContent = timed
         ? `${formatElapsed(Date.now() - new Date(w.startedAt).getTime())}${bw}`
         : `${formatDateJa(w.date)}${bw}`;
     };
     updateSub();
     clearInterval(elapsedTick);
-    if (live) elapsedTick = setInterval(updateSub, 1000);
+    if (timed) elapsedTick = setInterval(updateSub, 1000);
 
     const titleInput = h('input', {
       class: 'title-input', value: w.title || '', 'aria-label': '練習の名前',
@@ -640,7 +722,7 @@ export async function renderWorkout({ params }) {
           ? h('button', { class: 'btn btn-light', onclick: onFinish }, '終了')
           : h('button', { class: 'btn btn-light', onclick: async () => { await flush(); navigate(`/history/${w.id}`, { replace: true }); } }, '完了')),
       timer ? timer.el : null,
-      h('div', { class: 'ex-cards' }, w.items.map(buildCard)),
+      h('div', { class: 'ex-cards' }, w.items.flatMap((it, i) => (i < w.items.length - 1 ? [buildCard(it), betweenRow(it, w.items[i + 1])] : [buildCard(it)]))),
       !w.items.length ? h('p', { class: 'empty' }, '下の「種目を追加」から種目を足してください。') : null,
       h('div', { class: 'form-actions' },
         h('button', {
@@ -660,6 +742,18 @@ export async function renderWorkout({ params }) {
         }, '+ 種目を追加'),
         w.items.length > 1 ? h('button', { class: 'btn btn-ghost btn-block', onclick: reorderItems }, icon('sort', 18), '種目を並べ替える') : null,
         h('div', { class: 'field' },
+          h('label', { for: 'w-date' }, '練習した日'),
+          h('input', {
+            id: 'w-date', class: 'input', type: 'date', value: w.date, max: localDate(),
+            onchange: async (e) => {
+              if (!e.target.value) return;
+              w = await setWorkoutDate(w.id, e.target.value);
+              sets = await listSets(w.id);
+              toast(`日付を ${formatDateJa(w.date)} にしました`);
+              draw(true);
+            },
+          })),
+        h('div', { class: 'field' },
           h('label', { for: 'w-memo' }, 'この練習のメモ'),
           h('textarea', { id: 'w-memo', class: 'input textarea', rows: 2, oninput: (e) => { w.memo = e.target.value; clearTimeout(memoT); memoT = setTimeout(saveW, 500); } }, w.memo || '')),
         h('button', { class: 'btn btn-danger btn-block', onclick: onDiscard }, live ? 'この練習を破棄' : 'この練習を削除')),
@@ -677,5 +771,5 @@ export async function renderWorkout({ params }) {
     document.removeEventListener('visibilitychange', onHide);
     allowScreenOff();
   });
-  if (live) keepScreenOn();
+  if (timed) keepScreenOn();
 }

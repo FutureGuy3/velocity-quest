@@ -18,10 +18,10 @@ export function recordTypeLabel(key) {
 }
 
 /** 片側の記録方式 */
+/** 片側の記録方式:両側/片側(左右2段。重さは左右同じでも違ってもよい) */
 export const SIDE_MODES = {
   both: '両側',
-  same: '片側・左右同じ',
-  split: '片側・左右別',
+  split: '片側',
 };
 
 export const BODY_PARTS = ['胸', '背中', '肩', '腕', '脚', '臀部', '体幹', 'プライオ', 'ケア'];

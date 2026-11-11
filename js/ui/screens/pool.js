@@ -1,27 +1,65 @@
-// プール練習:タイム入力(試作 design/TimeEntry.dc.html)
+// スイム:スイムタブと、スイム記録(タイムの入力。試作 design/TimeEntry.dc.html)
 import { h, icon, mount, toast, formatDateJa } from '../dom.js';
-import { actionSheet } from '../components/overlay.js';
+import { actionSheet, openOverlay } from '../components/overlay.js';
+import { seriesSection } from './compare.js';
 import {
   startPoolSession, getActivePoolSession, getPoolSession, savePoolSession, finishPoolSession, deletePoolSession,
   addSwimTime, listSwimTimes, saveSwimTime, deleteSwimTime, getLastConditions, listSeries, seriesIdOf,
+  setPoolSessionDate, listRecentPoolSessions, localDate,
 } from '../../db/repo.js';
 import { formatSeconds } from '../../domain/calc.js';
 import {
-  CONDITIONS, ENVIRONMENTS, normalizeConditions, seriesAutoName, cutoffInfo, conditionsText,
+  CONDITIONS, normalizeConditions, seriesAutoName, cutoffInfo, conditionsText,
 } from '../../domain/swim.js';
 import { navigate, back } from '../../router.js';
 
-/** プール練習を始める(環境を選ぶ)。記録中があればそれを開く */
-export async function startPool() {
+/** スイム記録を始める(date を渡すと過去の日付で記録)。今日の分で記録中があればそれを開く */
+export async function startPool({ date = null } = {}) {
   const active = await getActivePoolSession();
-  if (active) { navigate(`/pool/${active.id}`); return; }
-  actionSheet({
-    title: 'プール練習を始めます。環境を選んでください',
-    actions: ENVIRONMENTS.map(([v, label]) => ({
-      label,
-      onSelect: async () => { const s = await startPoolSession({ environment: v }); navigate(`/pool/${s.id}`); },
-    })),
+  if (active && !date) { navigate(`/pool/${active.id}`); return; }
+  const s = await startPoolSession({ date });
+  navigate(`/pool/${s.id}`);
+}
+
+/* ======================= #/swim(スイムタブ) ======================= */
+
+export async function renderSwimTab() {
+  const active = await getActivePoolSession();
+  const recent = await listRecentPoolSessions(8);
+  const series = await seriesSection(renderSwimTab);
+  const startPast = () => openOverlay({
+    title: '日付を選んで記録',
+    render(api) {
+      const dIn = h('input', { id: 'swim-date', class: 'input', type: 'date', max: localDate(), value: localDate() });
+      return h('div', { class: 'form' },
+        h('div', { class: 'field' }, h('label', { for: 'swim-date' }, '泳いだ日'), dIn),
+        h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { const d = dIn.value || localDate(); api.close(); startPool({ date: d }); } }, 'この日のスイム記録を始める'));
+    },
   });
+  mount(h('div', {},
+    h('header', { class: 'topbar' }, h('div', { class: 'topbar-title' }, h('h1', { class: 'topbar-h' }, 'スイム'))),
+    active ? h('section', { class: 'active-card', 'aria-label': '記録中のスイム記録' },
+      h('div', {},
+        h('p', { class: 'label', style: { color: 'var(--accent)', fontWeight: 700 } }, '記録中'),
+        h('p', { style: { fontSize: '15px', fontWeight: 700 } }, `スイム記録 · ${formatDateJa(active.date)}`)),
+      h('div', { class: 'row' }, h('button', { class: 'btn btn-primary', onclick: () => navigate(`/pool/${active.id}`) }, '再開'))) : null,
+    h('div', { class: 'section-head', style: { paddingTop: '8px' } }, h('h2', {}, 'スイム記録(タイム)')),
+    h('div', { class: 'stack' },
+      h('button', { class: 'btn btn-primary btn-block pool-start', onclick: () => startPool() }, active ? 'スイム記録を再開' : 'スイム記録を始める'),
+      h('button', { class: 'btn btn-ghost btn-block', onclick: startPast }, '日付を選んで記録(過去の分)'),
+      recent.length ? recent.map(({ session: s, times }) => {
+        const n = new Set(times.map((t) => t.seriesId)).size;
+        return h('a', { class: 'goal-row', href: `#/pool/${s.id}` },
+          h('div', { class: 'info' },
+            h('span', { class: 'title' }, formatDateJa(s.date)),
+            h('span', { class: 'sub' }, `${times.length}本 · ${n}系統${s.memo ? ` · ${s.memo.slice(0, 20)}` : ''}`)),
+          h('span', { style: { color: 'var(--faint)', display: 'inline-flex' } }, icon('forward', 18)));
+      }) : null),
+    h('div', { class: 'section-head' }, h('h2', {}, '練習タイムの系統')),
+    series,
+    h('div', { class: 'section-head' }, h('h2', {}, 'スイム練習・ルーティン')),
+    h('p', { class: 'empty', style: { paddingTop: 0 } }, 'スイム練習の記録と、スイムのルーティンの作成は、今後の段階で作ります。'),
+  ), { showNav: true, navKey: 'swim' });
 }
 
 /**
@@ -47,16 +85,15 @@ export function digitsToSeconds(d) {
 
 export async function renderPool({ params }) {
   let session = await getPoolSession(params.id);
-  if (!session) { toast('プール練習が見つかりません'); navigate('/home', { replace: true }); return; }
+  if (!session) { toast('スイム記録が見つかりません'); navigate('/swim', { replace: true }); return; }
   const live = session.status === 'active';
   let times = await listSwimTimes(session.id);
   let seriesMap = new Map((await listSeries()).map((s) => [s.id, s]));
 
-  // 最初の条件:この練習の最後のタイムの条件 → 前回の条件。環境に合わせてプールを選んでおく
+  // 最初の条件:この記録の最後のタイムの条件 → 前回の条件
   const last = times.length ? times[times.length - 1].conditions : await getLastConditions();
   let cond = normalizeConditions(last);
   const sameAsLast = !times.length;
-  if (!times.length) cond.pool = session.environment === 'short' ? 'short' : 'long';
   let digits = '';
   // 条件の欄:この練習でまだ記録がなければ開いておく。記録したら1行にたたんで、数字キーを画面に収める
   let condOpen = !times.length;
@@ -90,13 +127,13 @@ export async function renderPool({ params }) {
 
   async function onFinish() {
     if (!times.length && !confirm('タイムがまだありません。終了しますか?(この練習は残りません)')) return;
-    if (!times.length) { await deletePoolSession(session.id); navigate('/home', { replace: true }); return; }
+    if (!times.length) { await deletePoolSession(session.id); navigate('/swim', { replace: true }); return; }
     await finishPoolSession(session.id);
     toast('お疲れさまでした');
-    navigate('/history', { replace: true });
+    navigate('/swim', { replace: true });
   }
   async function onDelete() {
-    if (!confirm('このプール練習を削除しますか?タイムも消えます。')) return;
+    if (!confirm('このスイム記録を削除しますか?タイムも消えます。')) return;
     await deletePoolSession(session.id);
     toast('削除しました');
     navigate(live ? '/home' : '/history', { replace: true });
@@ -110,7 +147,19 @@ export async function renderPool({ params }) {
         c.options.map(([v, label]) => h('button', {
           type: 'button', role: 'radio', class: 'cond-opt', 'aria-checked': String(String(cond[c.key]) === String(v)),
           onclick: () => { cond = normalizeConditions({ ...cond, [c.key]: v }); draw(true); },
-        }, label)))));
+        }, label)),
+        // 距離は任意の値も入れられる
+        c.key === 'distance' ? h('button', {
+          type: 'button', role: 'radio', class: 'cond-opt',
+          'aria-checked': String(!c.options.some(([v]) => Number(v) === Number(cond.distance))),
+          onclick: () => {
+            const v = prompt('距離(m)', c.options.some(([x]) => Number(x) === Number(cond.distance)) ? '' : String(cond.distance));
+            const n = Math.round(Number(String(v ?? '').normalize('NFKC')));
+            if (!v) return;
+            if (!(n > 0 && n <= 1500)) { toast('距離は 1〜1500 の数字で入れてください'); return; }
+            cond = normalizeConditions({ ...cond, distance: n }); draw(true);
+          },
+        }, c.options.some(([v]) => Number(v) === Number(cond.distance)) ? '任意' : `${cond.distance}m(任意)`) : null)));
   }
 
   function keypad(display, note) {
@@ -143,12 +192,12 @@ export async function renderPool({ params }) {
 
     mount(h('div', {},
       h('header', { class: 'topbar workout-top' },
-        h('button', { class: 'icon-btn', 'aria-label': '戻る', onclick: () => (live ? navigate('/home') : back('/history')) }, icon('back')),
+        h('button', { class: 'icon-btn', 'aria-label': '戻る', onclick: () => (live ? navigate('/swim') : back('/swim')) }, icon('back')),
         h('div', { class: 'topbar-title' },
-          h('span', { class: 'topbar-sub' }, `プール練習 · ${formatDateJa(session.date)} · ${ENVIRONMENTS.find(([v]) => v === session.environment)?.[1] ?? ''}`),
-          h('span', { class: 'topbar-h' }, 'タイム入力')),
+          h('span', { class: 'topbar-sub' }, formatDateJa(session.date)),
+          h('span', { class: 'topbar-h' }, 'スイム記録')),
         live ? h('button', { class: 'btn btn-light', onclick: onFinish }, '終了')
-          : h('button', { class: 'btn btn-light', onclick: () => navigate('/history', { replace: true }) }, '完了')),
+          : h('button', { class: 'btn btn-light', onclick: () => navigate('/swim', { replace: true }) }, '完了')),
 
       h('section', { class: 'card cond-card', 'aria-label': '計測の条件' },
         h('div', { class: 'series-head' },
@@ -205,9 +254,21 @@ export async function renderPool({ params }) {
 
       h('div', { class: 'form-actions' },
         h('div', { class: 'field' },
-          h('label', { for: 'pool-memo' }, 'この練習のメモ'),
+          h('label', { for: 'pool-date' }, '泳いだ日'),
+          h('input', {
+            id: 'pool-date', class: 'input', type: 'date', value: session.date, max: localDate(),
+            onchange: async (e) => {
+              if (!e.target.value) return;
+              session = await setPoolSessionDate(session.id, e.target.value);
+              times = await listSwimTimes(session.id);
+              toast(`日付を ${formatDateJa(session.date)} にしました`);
+              draw(true);
+            },
+          })),
+        h('div', { class: 'field' },
+          h('label', { for: 'pool-memo' }, 'このスイム記録のメモ'),
           h('textarea', { id: 'pool-memo', class: 'input textarea', rows: 2, onchange: async (e) => { session = await savePoolSession({ ...session, memo: e.target.value }); } }, session.memo || '')),
-        h('button', { class: 'btn btn-danger btn-block', onclick: onDelete }, live ? 'このプール練習を破棄' : 'このプール練習を削除')),
+        h('button', { class: 'btn btn-danger btn-block', onclick: onDelete }, live ? 'このスイム記録を破棄' : 'このスイム記録を削除')),
     ), { showNav: false, keepScroll: keepScroll && !first, redraw: !first });
     first = false;
   }
