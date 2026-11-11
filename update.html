@@ -57,7 +57,21 @@
         for (const req of await c.keys()) if (req.url.startsWith(scope)) await c.delete(req);
       }
     } catch (e) { log('一部を消せませんでした: ' + e.message); }
-    log('最新の版を読み込みます…');
+    // その場で新しいしくみを入れ、部品をすべて新しく取りそろえ終わるのを待つ(古い部品が混ざらないように)
+    try {
+      log('新しい版の部品を取りそろえています…');
+      const reg = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
+      await new Promise((resolve) => {
+        const done = () => resolve();
+        const watch = (w) => { if (!w) return; if (w.state === 'activated') done(); w.addEventListener('statechange', () => { if (w.state === 'activated' || w.state === 'redundant') done(); }); };
+        if (reg.active && !reg.installing && !reg.waiting) return done();
+        watch(reg.installing); watch(reg.waiting); watch(reg.active);
+        reg.addEventListener('updatefound', () => watch(reg.installing));
+        setTimeout(done, 30000);
+      });
+      log('取りそろえました');
+    } catch (e) { log('しくみを入れられませんでした: ' + e.message); }
+    log('最新の版を開きます…');
     location.replace('./?v=' + Date.now() + '#/home');
   });
 })();

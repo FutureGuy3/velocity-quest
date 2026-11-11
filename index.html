@@ -26,5 +26,28 @@
 <main id="app"><p class="empty">読み込み中…</p></main>
 <nav id="nav" class="bottom-nav" aria-label="メイン"></nav>
 <noscript><p class="empty">JavaScript を有効にしてください。</p></noscript>
+<script>
+// 起動の見張り(モジュールではない普通のスクリプト)。
+// 古い部品と新しい部品が混ざってアプリが起動できないときでも、
+// 1) この場所のオフライン用のしくみ(Service Worker)の登録だけは行い、入れ替わったら読み込み直す
+// 2) 10秒たっても起動しなければ、更新用ページへのボタンを出す
+(function () {
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    var had = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(function () {});
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (had && !window.__vqBooted && !window.__vqReloading) { window.__vqReloading = true; location.reload(); }
+    });
+  }
+  setTimeout(function () {
+    if (window.__vqBooted) return;
+    var app = document.getElementById('app');
+    app.innerHTML = '<div class="empty" style="display:flex;flex-direction:column;gap:12px">'
+      + '<p>アプリを起動できませんでした。古い部品が残っている可能性があります。</p>'
+      + '<a class="btn btn-primary btn-block" href="./update.html?v=' + Date.now() + '">更新用ページを開く(記録は消えません)</a>'
+      + '<button class="btn btn-ghost btn-block" type="button" onclick="location.reload()">もう一度読み込む</button></div>';
+  }, 10000);
+})();
+</script>
 </body>
 </html>

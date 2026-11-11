@@ -73,6 +73,7 @@ async function boot() {
   }
   registerRoutes();
   startRouter();
+  window.__vqBooted = true; // index.html の起動の見張りに、起動できたことを知らせる
 
   registerServiceWorker();
 }
