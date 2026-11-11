@@ -24,9 +24,19 @@ export const DEFAULT_SETTINGS = Object.freeze({
 
 export async function initRepo() {
   db = openDb();
-  // 保存場所の形を新しくするとき、ほかのタブで古い版が開いていると待たされる。そのことを起動の見張りに知らせる
-  db.on('blocked', () => { window.__vqStage = '記録の保存場所の作り替えが、ほかのタブで開いている古い版に止められています。このアプリのタブをすべて閉じてから開き直してください'; });
-  await db.open();
+  // 保存場所の形を新しくするとき、ほかのタブやホーム画面から開いたアプリで古い版が開いていると待たされる。
+  // そのことを起動の見張りに知らせる(blocked が来ないブラウザもあるので、時間でも知らせる)
+  const WAIT_MSG = '記録の保存場所の作り替えが、ほかで開いている古い版に止められています。'
+    + 'このアプリの Brave のタブと、ホーム画面から開いたアプリをすべて閉じて(最近使ったアプリの一覧で上にスワイプ)、開き直してください';
+  db.on('blocked', () => { window.__vqStage = WAIT_MSG; });
+  const slow = setTimeout(() => { window.__vqStage = WAIT_MSG; }, 5000);
+  // 新しい版が作り替えを始めたら、この版は保存場所を手放して読み込み直す(新しい版を止めないように)
+  db.on('versionchange', () => {
+    db.close();
+    setTimeout(() => location.reload(), 300);
+    return false;
+  });
+  try { await db.open(); } finally { clearTimeout(slow); }
   deviceId = await getMeta('deviceId');
   if (!deviceId) {
     deviceId = crypto.randomUUID();
