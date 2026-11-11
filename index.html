@@ -10,7 +10,14 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="VQ">
-<link rel="manifest" href="./manifest.json">
+<link rel="manifest" href="./manifest.json" id="manifest-link">
+<script>
+// テスト版(/preview/)は、ホーム画面に追加したときの名前と絵を本番と変える(「VQ テスト版」・黄色)
+if (location.pathname.indexOf('/preview/') >= 0) {
+  document.getElementById('manifest-link').href = './manifest-preview.json';
+  document.querySelector('meta[name="apple-mobile-web-app-title"]').content = 'VQテスト';
+}
+</script>
 <link rel="icon" href="./icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
