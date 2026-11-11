@@ -555,3 +555,6 @@ button.target-row { width: 100%; background: transparent; border: none; border-t
 .cond-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .cond-summary .hint { min-width: 0; }
 .cond-summary .btn { flex-shrink: 0; font-size: 13px; padding: 0 12px; }
+
+/* ---- テスト版の帯 ---- */
+.preview-banner { position: sticky; top: 0; z-index: 40; background: var(--warm); color: var(--bg); text-align: center; font-size: 12px; font-weight: 700; padding: 4px 8px; }

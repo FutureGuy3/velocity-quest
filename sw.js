@@ -58,6 +58,14 @@ const PRECACHE = [
   './icons/apple-touch-icon.png',
 ];
 
+/**
+ * 自分の配信場所のキャッシュだけから探す。
+ * caches.match はサイト全体のキャッシュを探すので、本番のキャッシュに残った古いテスト版の部品を返してしまうことがある
+ */
+function ownMatch(req) {
+  return caches.open(APP_CACHE).then((c) => c.match(req, { ignoreSearch: true }));
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(APP_CACHE)
@@ -105,14 +113,14 @@ self.addEventListener('fetch', (event) => {
     const scope = new URL(self.registration.scope);
     const isApp = url.pathname === scope.pathname || url.pathname === scope.pathname + 'index.html';
     event.respondWith(isApp
-      ? caches.match('./index.html').then((r) => r || fetch(req))
-      : fetch(req).catch(() => caches.match(req, { ignoreSearch: true })));
+      ? ownMatch('./index.html').then((r) => r || fetch(req))
+      : fetch(req).catch(() => ownMatch(req)));
     return;
   }
 
   // それ以外:キャッシュにあればそれを、なければ取得してキャッシュに足す
   event.respondWith(
-    caches.match(req, { ignoreSearch: true }).then((cached) => cached || fetch(req).then((res) => {
+    ownMatch(req).then((cached) => cached || fetch(req).then((res) => {
       if (res.ok) {
         const copy = res.clone();
         caches.open(APP_CACHE).then((c) => c.put(req, copy));

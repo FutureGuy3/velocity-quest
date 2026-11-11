@@ -1,5 +1,5 @@
 // 起動:データベースを開く → 初期データ → テーマ色 → ルーター開始 → Service Worker 登録
-import { initRepo, getSettings, getActiveWorkout } from './db/repo.js';
+import { initRepo, getSettings, getActiveWorkout, IS_PREVIEW } from './db/repo.js';
 import { seedIfNeeded } from './db/seed.js';
 import { route, fallback, startRouter } from './router.js';
 import { h, icon, mount, toast, applyAccent } from './ui/dom.js';
@@ -14,6 +14,12 @@ import { renderHistory, renderHistoryDetail } from './ui/screens/history.js';
 import { renderTrialEdit } from './ui/screens/trialEdit.js';
 import { renderBodyweight } from './ui/screens/bodyweight.js';
 import { renderPool } from './ui/screens/pool.js';
+
+/** テスト版だけ、画面の上に目立つ帯を出す(本番と見間違えないように) */
+function previewBanner() {
+  if (!IS_PREVIEW) return;
+  document.body.prepend(h('div', { class: 'preview-banner', role: 'note' }, `テスト版 ${self.VQ_VERSION}(本番とは別のデータ)`));
+}
 
 function buildNav() {
   const nav = document.getElementById('nav');
@@ -55,6 +61,7 @@ function showFatal(err) {
 
 async function boot() {
   buildNav();
+  previewBanner();
   try {
     await initRepo();
     await seedIfNeeded();
