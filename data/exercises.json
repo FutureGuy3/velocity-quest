@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "note": "最初から入れる種目。bodyPart と equipment は画面表示用の日本語。recordType は docs/design.md の記録の型のキー。unilateral=片側で行えるか。increment=重さの刻み(kg)。restSec=休憩の初期値(秒)。 swim=水泳の目的(start=スタート強化, turn=ターン強化, pull=プル強化, kick=キック強化)。",
   "exercises": [
     {"id":"chest-bb-bench","name":"バーベル・ベンチプレス","bodyPart":"胸","equipment":"バーベル","recordType":"weight_reps","unilateral":false,"increment":2.5,"restSec":120},
@@ -101,6 +101,7 @@
     {"id":"plyo-squat-jump","name":"プライオ・スクワットジャンプ","bodyPart":"プライオ","equipment":"自重","recordType":"reps","unilateral":false,"restSec":60,"swim":["start"]},
     {"id":"plyo-single-leg-hop","name":"プライオ・シングルレッグホップ","bodyPart":"プライオ","equipment":"自重","recordType":"contacts","unilateral":true,"restSec":60,"swim":["turn"]},
     {"id":"plyo-bounding","name":"プライオ・バウンディング","bodyPart":"プライオ","equipment":"自重","recordType":"reps","unilateral":false,"restSec":90,"swim":["start"]},
+    {"id":"test-dive-horizontal-velocity","name":"飛び込み水平速度","bodyPart":"プライオ","equipment":"自重","recordType":"trials","unit":"m/s","unilateral":false,"restSec":60,"swim":["start"],"order":-1},
     {"id":"test-standing-long-jump","name":"立ち幅跳び","bodyPart":"プライオ","equipment":"自重","recordType":"trials","unit":"m","unilateral":false,"restSec":60,"swim":["start"]},
     {"id":"test-vertical-jump","name":"垂直跳び","bodyPart":"プライオ","equipment":"自重","recordType":"trials","unit":"cm","unilateral":false,"restSec":60,"swim":["start"]},
 

@@ -52,7 +52,7 @@ export async function seedIfNeeded() {
       favorite: false,
       hidden: false,
       builtin: true,
-      order: i,
+      order: e.order ?? i,
     });
     added++;
   }

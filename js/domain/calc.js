@@ -177,6 +177,12 @@ export function formatElapsed(ms) {
 }
 
 /** 数値の表示(不要な末尾の0を出さない) */
+/** 試技の値の表示。m/s(飛び込み水平速度など)は常に小数2桁(4.50) */
+export function fmtTrial(n, unit) {
+  if (n == null || !Number.isFinite(Number(n))) return '—';
+  return unit === 'm/s' ? Number(n).toFixed(2) : fmt(n, 2);
+}
+
 export function fmt(n, maxDigits = 2) {
   if (n == null || !Number.isFinite(Number(n))) return '—';
   return String(round(Number(n), maxDigits));
@@ -213,7 +219,7 @@ export function formatSeconds(sec, digits = 2) {
 }
 
 /**
- * 1回の練習の合計(本番のセットだけ。ウォームアップは除く)
+ * 1回の練習の合計(完了したセット。ウォームアップも含める)
  * sets: 完了したセット。recordTypeOf(exerciseId) で記録の型を返す。bodyweight はその日の体重
  * 総挙上重量:重さ×回数の合計。片側は左右を足す。自重+加重は(体重+加重)、自重−アシストは(体重−アシスト)で数える
  * → { volume, exercises, sets, reps }
@@ -222,7 +228,7 @@ export function workoutTotals(sets, recordTypeOf, bodyweight = null) {
   let volume = 0, reps = 0, count = 0;
   const exercises = new Set();
   for (const s of sets) {
-    if (!s || s.warmup || !s.done) continue;
+    if (!s || !s.done) continue;
     const rt = recordTypeOf(s.exerciseId);
     if (rt === 'trials') continue;
     count++;

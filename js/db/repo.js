@@ -972,6 +972,44 @@ export async function exportAll() {
 }
 
 /**
+ * 選んだ記録だけを書き出す(別の端末で記録した日の分を、いつもの端末に足すため)
+ * workoutIds:ジム、poolSessionIds:スイム記録。withDayExtras なら、その日の体重と(練習の外で入れた)試技も入れる。
+ * 種目は自分で登録した種目だけを入れる(最初から入っている種目はどの端末でも同じ id なので入れない。
+ * 入れると、お気に入りなどの設定が読み込む側で上書きされることがあるため)。
+ * 読み込みは importAll の統合(同じ id は新しい方を残す)で行い、端末のほかのデータは消さない。
+ */
+export async function exportSelected({ workoutIds = [], poolSessionIds = [], withDayExtras = true } = {}) {
+  const workouts = (await db.workouts.bulkGet(workoutIds)).filter(alive);
+  const poolSessions = (await db.poolSessions.bulkGet(poolSessionIds)).filter(alive);
+  const ids = new Set(workouts.map((w) => w.id));
+  const sets = (await db.sets.where('workoutId').anyOf([...ids]).toArray()).filter(alive);
+  let trials = (await db.trials.where('workoutId').anyOf([...ids]).toArray()).filter(alive);
+  const swimTimes = (await db.swimTimes.where('sessionId').anyOf(poolSessions.map((s) => s.id)).toArray()).filter(alive);
+  const dates = [...new Set([...workouts.map((w) => w.date), ...poolSessions.map((s) => s.date)])];
+  let bodyweights = [];
+  if (withDayExtras && dates.length) {
+    bodyweights = (await db.bodyweights.where('date').anyOf(dates).toArray()).filter(alive);
+    const free = (await db.trials.toArray()).filter((t) => alive(t) && !t.workoutId && dates.includes(t.date));
+    trials = [...trials, ...free];
+  }
+  const series = (await db.series.bulkGet([...new Set(swimTimes.map((t) => t.seriesId))])).filter(alive);
+  const exIds = new Set([
+    ...sets.map((s) => s.exerciseId), ...trials.map((t) => t.exerciseId),
+    ...workouts.flatMap((w) => (w.items || []).map((it) => it.exerciseId)),
+  ]);
+  const exercises = (await db.exercises.bulkGet([...exIds])).filter((e) => e && !e.builtin);
+  return {
+    format: BACKUP_FORMAT,
+    scope: 'selected',
+    schemaVersion: db.verno,
+    exportedAt: nowIso(),
+    deviceId,
+    summary: { workouts: workouts.length, poolSessions: poolSessions.length, dates: dates.sort() },
+    tables: { workouts, sets, trials, poolSessions, swimTimes, series, bodyweights, exercises },
+  };
+}
+
+/**
  * mode = 'merge'  : 同じ id は updatedAt が新しい方を残す(段階3の同期と同じ規則)
  * mode = 'replace': 端末のデータを全部消してから読み込む
  * 戻り値:テーブルごとの { added, updated, skipped }
@@ -994,6 +1032,7 @@ export async function importAll(data, { mode = 'merge' } = {}) {
       ...r, items: (r.items || []).map((it) => (Array.isArray(it.setPlans) ? it : migrateItem(it, exs.get(it.exerciseId)))),
     })) } };
   }
+  if (data.scope === 'selected' && mode !== 'merge') throw new Error('選んだ記録のファイルは「統合」でだけ読み込めます');
   const report = {};
   await db.transaction('rw', SYNC_TABLES.map((t) => db[t]), async () => {
     for (const t of SYNC_TABLES) {

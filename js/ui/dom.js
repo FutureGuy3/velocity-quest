@@ -142,3 +142,18 @@ export function faceIcon(level, size = 26) {
 export function applyAccent(color) {
   document.documentElement.style.setProperty('--accent', color);
 }
+
+/** JSON をファイルにして保存する(スマホでは共有シート、使えなければダウンロード) */
+export async function saveJsonFile(data, name) {
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
+  const file = new File([blob], name, { type: 'application/json' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return true; } catch (e) { if (e.name === 'AbortError') return false; }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('書き出しました');
+  return true;
+}

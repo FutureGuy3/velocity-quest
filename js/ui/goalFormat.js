@@ -2,8 +2,8 @@
 import { goalProgress, formatSeconds, fmt } from '../domain/calc.js';
 import { formatDateShort } from './dom.js';
 
-export const GOAL_UNITS = ['秒', 'm', 'cm', 'kg', '回'];
-const UNIT_DIGITS = { '秒': 2, 'm': 2, 'cm': 1, 'kg': 1, '回': 0 };
+export const GOAL_UNITS = ['秒', 'm', 'cm', 'm/s', 'kg', '回'];
+const UNIT_DIGITS = { '秒': 2, 'm': 2, 'cm': 1, 'm/s': 2, 'kg': 1, '回': 0 };
 
 export function fmtGoalValue(v, unit) {
   if (v == null) return '—';

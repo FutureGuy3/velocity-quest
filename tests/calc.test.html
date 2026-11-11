@@ -138,10 +138,10 @@ const tw = c.workoutTotals([
   { exerciseId: 'pl', seconds: 60, done: true },
   { exerciseId: 'sq', weight: 100, reps: 1, done: false },
 ], rtOf, 68);
-eq('合計:総挙上重量 80×5×2 + 40×8 + 40×7 + (68+10)×3 = 1634', tw.volume, 1634);
-eq('合計:総セット数(ウォームアップと未完了を除く)', tw.sets, 5);
+eq('合計:総挙上重量 60×8(W) + 80×5×2 + 40×8 + 40×7 + (68+10)×3 = 2114', tw.volume, 2114);
+eq('合計:総セット数(ウォームアップを含め、未完了を除く)', tw.sets, 6);
 eq('合計:総種目数', tw.exercises, 3);
-eq('合計:総レップ数(片側は左右を足す)', tw.reps, 28);
+eq('合計:総レップ数(ウォームアップを含め、片側は左右を足す)', tw.reps, 36);
 eq('系統:個人メドレーの名前', sw.seriesAutoName({ distance: 100, stroke: 'im', timing: 'hand' }), '短水路100m 個人メドレー・壁・自分(手動)');
 eq('系統:任意の距離', sw.seriesKey({ distance: 35 }).includes('35m'), true);
 

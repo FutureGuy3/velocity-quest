@@ -1,4 +1,4 @@
-// 指標と目標:目標の一覧、選んだ種目のベストの推移、試技(立ち幅跳び・垂直跳び)
+// 指標と目標:目標の一覧、選んだ種目のベストの推移、試技(飛び込み水平速度・立ち幅跳び・垂直跳び)
 import { h, icon, mount, toast } from '../dom.js';
 import {
   listGoals, getGoalBest, localDate, GOAL_METRICS, listExercises, listTrials,
@@ -9,7 +9,7 @@ import { compareSection } from './compare.js';
 import { openPicker } from '../components/picker.js';
 import { actionSheet } from '../components/overlay.js';
 import { formatSet } from '../setFormat.js';
-import { trialStats, fmt } from '../../domain/calc.js';
+import { trialStats, fmt, fmtTrial } from '../../domain/calc.js';
 import { formatDateShort } from '../dom.js';
 import { goalTexts } from '../goalFormat.js';
 
@@ -17,7 +17,8 @@ export async function renderMetrics() {
   const today = localDate();
   const goals = await listGoals();
   const bests = await Promise.all(goals.map((g) => getGoalBest(g)));
-  const trialExercises = (await listExercises()).filter((e) => e.recordType === 'trials');
+  // 試技は 飛び込み水平速度 を最上段に(初期データの order の順)
+  const trialExercises = (await listExercises()).filter((e) => e.recordType === 'trials').sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
   const trialSections = await Promise.all(trialExercises.map(async (ex) => trialSection(ex, await listTrials(ex.id))));
   const bws = await listBodyweights();
   const lastBw = bws[bws.length - 1];
@@ -40,7 +41,7 @@ export async function renderMetrics() {
         const cur = settings.trackedExercises || [];
         const next = [...cur, ...ids.filter((id) => !cur.includes(id) && !skipped.includes(id))];
         await saveSettings({ trackedExercises: next });
-        if (skipped.length) toast('立ち幅跳び・垂直跳びは下の「試技」に出ています');
+        if (skipped.length) toast('試技の種目は下の「試技」に出ています');
         renderMetrics();
       },
     });
@@ -103,7 +104,7 @@ function trialSection(ex, records) {
   const prev = records[1];
   const st = latest ? trialStats(latest.attempts) : null;
   const prevSt = prev ? trialStats(prev.attempts) : null;
-  const d = (v) => (v == null ? '—' : `${fmt(v, 2)}${unit}`);
+  const d = (v) => (v == null ? '—' : `${fmtTrial(v, unit)}${unit}`);
   return h('section', { class: 'card trial-card', style: { margin: '12px var(--gutter) 0' }, 'aria-label': ex.name },
     h('div', { class: 'trial-head' },
       h('h2', {}, ex.name),
@@ -111,7 +112,7 @@ function trialSection(ex, records) {
     latest ? h('a', { class: 'trial-chips', href: `#/trial/${latest.id}`, 'aria-label': '最新の記録を編集' },
       latest.attempts.map((a, i) => h('div', { class: `trial-chip${a.foul ? ' foul' : ''}${!a.foul && a.value === st.best ? ' best' : ''}` },
         h('span', { class: 'n' }, `${i + 1}本目`),
-        h('span', { class: 'v' }, a.foul ? 'ファウル' : fmt(a.value, 2))))) : null,
+        h('span', { class: 'v' }, a.foul ? 'ファウル' : fmtTrial(a.value, unit))))) : null,
     latest ? h('div', { class: 'calc-box' },
       h('div', { class: 'cb' }, h('span', { class: 'k' }, '最高'), h('span', { class: 'num big' }, d(st.best))),
       h('div', { class: 'cb' }, h('span', { class: 'k' }, `平均(有効${st.validCount}本)`), h('span', { class: 'num big' }, d(st.average))),

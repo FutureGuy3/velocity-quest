@@ -1,11 +1,11 @@
-// ホーム:目標の常時表示、今日の体重、記録中のトレーニング、ルーティン一覧と開始
+// ホーム:記録中のトレーニング・スイム記録の再開、目標の常時表示、今日の体重、ルーティン一覧と開始
 import { h, icon, mount, toast, formatDateJa, formatDateShort } from '../dom.js';
 import {
   localDate, IS_PREVIEW,
   getPinnedGoals, getGoalBest,
   getBodyweightOn, getLatestBodyweight, saveBodyweight,
   listRoutines, getRoutineLastDates,
-  getActiveWorkout, startWorkout, deleteWorkout,
+  getActiveWorkout, startWorkout, deleteWorkout, getActivePoolSession,
 } from '../../db/repo.js';
 import { goalTexts } from '../goalFormat.js';
 import { navigate } from '../../router.js';
@@ -30,9 +30,9 @@ export function choosePreset() {
 
 export async function renderHome() {
   const today = localDate();
-  const [goals, active, routines, lastDates, todayBw, latestBw] = await Promise.all([
+  const [goals, active, routines, lastDates, todayBw, latestBw, activePool] = await Promise.all([
     getPinnedGoals(), getActiveWorkout(), listRoutines(), getRoutineLastDates(),
-    getBodyweightOn(today), getLatestBodyweight(),
+    getBodyweightOn(today), getLatestBodyweight(), getActivePoolSession(),
   ]);
   const bests = await Promise.all(goals.map((g) => getGoalBest(g)));
 
@@ -43,10 +43,13 @@ export async function renderHome() {
         h('span', { class: 'topbar-sub' }, formatDateJa(today))),
       h('button', { class: 'icon-btn', 'aria-label': '設定', onclick: () => navigate('/settings') }, icon('settings'))),
 
+    // 記録中があれば一番上に「再開」を出す
+    active ? activeCard(active) : null,
+    activePool ? activePoolCard(activePool) : null,
     goals.length ? goalCarousel(goals, bests, today) : goalEmpty(),
     bodyweightCard(today, todayBw, latestBw),
 
-    // ホームは 目標・体重・ルーティン(▶で開始)だけ。作成・編集と記録中の再開はジムタブ
+    // ホームは 再開・目標・体重・ルーティン(▶で開始)だけ。作成・編集はジムタブ
     h('div', { class: 'section-head' },
       h('h2', {}, 'ルーティン'),
       h('a', { href: '#/workout' }, 'ジムで編集')),
@@ -186,10 +189,20 @@ function activeCard(w) {
     h('div', {},
       h('p', { class: 'label', style: { color: 'var(--accent)', fontWeight: 700 } }, '記録中'),
       h('p', { style: { fontSize: '15px', fontWeight: 700 } }, w.title || 'トレーニング'),
-      h('p', { class: 'label' }, `${dateNote}${hhmm} 開始 · ${w.items.length}種目`)),
+      h('p', { class: 'label' }, w.backfill ? `${formatDateShort(w.date)} の分 · ${w.items.length}種目` : `${dateNote}${hhmm} 開始 · ${w.items.length}種目`)),
     h('div', { class: 'row' },
       h('button', { class: 'btn btn-primary', onclick: () => navigate(`/workout/${w.id}`) }, '再開'),
       h('button', { class: 'btn btn-ghost', onclick: () => discard(w) }, '破棄')));
+}
+
+function activePoolCard(s) {
+  return h('section', { class: 'active-card', 'aria-label': '記録中のスイム記録' },
+    h('div', {},
+      h('p', { class: 'label', style: { color: 'var(--accent)', fontWeight: 700 } }, '記録中'),
+      h('p', { style: { fontSize: '15px', fontWeight: 700 } }, 'スイム記録'),
+      h('p', { class: 'label' }, formatDateShort(s.date))),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn btn-primary', onclick: () => navigate(`/pool/${s.id}`) }, '再開')));
 }
 
 async function discard(w) {

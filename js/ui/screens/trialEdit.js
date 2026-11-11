@@ -1,7 +1,7 @@
 // 試技の入力(立ち幅跳び・垂直跳び など、記録の型が「試技」の種目)
 import { h, icon, mount, toast } from '../dom.js';
 import { getTrial, saveTrial, deleteTrial, getExercise, localDate } from '../../db/repo.js';
-import { trialStats, parseNumber, fmt } from '../../domain/calc.js';
+import { trialStats, parseNumber, fmt, fmtTrial } from '../../domain/calc.js';
 import { back } from '../../router.js';
 
 export async function renderTrialEdit({ params, query }) {
@@ -22,8 +22,8 @@ export async function renderTrialEdit({ params, query }) {
   const updateStats = () => {
     const s = trialStats(st.attempts.filter((a) => a.value != null || a.foul));
     stats.replaceChildren(
-      h('div', { class: 'cb' }, h('span', { class: 'k' }, '最高'), h('span', { class: 'num big' }, s.best != null ? `${fmt(s.best, 2)}${unit}` : '—')),
-      h('div', { class: 'cb' }, h('span', { class: 'k' }, `平均(有効${s.validCount}本)`), h('span', { class: 'num big' }, s.average != null ? `${fmt(s.average, 2)}${unit}` : '—')));
+      h('div', { class: 'cb' }, h('span', { class: 'k' }, '最高'), h('span', { class: 'num big' }, s.best != null ? `${fmtTrial(s.best, unit)}${unit}` : '—')),
+      h('div', { class: 'cb' }, h('span', { class: 'k' }, `平均(有効${s.validCount}本)`), h('span', { class: 'num big' }, s.average != null ? `${fmtTrial(s.average, unit)}${unit}` : '—')));
   };
 
   const grid = h('div', { class: 'attempts' });

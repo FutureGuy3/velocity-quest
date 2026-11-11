@@ -597,8 +597,8 @@ export async function renderWorkout({ params }) {
     function updateStats() {
       const st = trialStats(attempts.filter((a) => a.value != null || a.foul));
       statsEl.replaceChildren(
-        h('div', { class: 'cb' }, h('span', { class: 'k' }, '最高'), h('span', { class: 'num big' }, st.best != null ? `${fmt(st.best, 2)}${unit}` : '—')),
-        h('div', { class: 'cb' }, h('span', { class: 'k' }, `平均(有効${st.validCount}本)`), h('span', { class: 'num big' }, st.average != null ? `${fmt(st.average, 2)}${unit}` : '—')));
+        h('div', { class: 'cb' }, h('span', { class: 'k' }, '最高'), h('span', { class: 'num big' }, st.best != null ? `${fmtTrial(st.best, unit)}${unit}` : '—')),
+        h('div', { class: 'cb' }, h('span', { class: 'k' }, `平均(有効${st.validCount}本)`), h('span', { class: 'num big' }, st.average != null ? `${fmtTrial(st.average, unit)}${unit}` : '—')));
     }
     updateStats();
     const grid = h('div', { class: 'attempts' });

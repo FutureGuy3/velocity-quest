@@ -1,9 +1,10 @@
 // 履歴:日付ごとの一覧と、練習の詳細
-import { h, icon, mount, toast, faceIcon, formatDateJa, formatDateShort, FACE_COLORS } from '../dom.js';
+import { h, icon, mount, toast, faceIcon, formatDateJa, formatDateShort, FACE_COLORS, saveJsonFile } from '../dom.js';
 import {
   listHistory, listSwimTimes, getWorkout, listSets, getExerciseMap, getWorkoutTrial, deleteWorkout, createRoutineFromWorkout,
+  exportSelected, localDate,
 } from '../../db/repo.js';
-import { trialStats, fmt, workoutTotals } from '../../domain/calc.js';
+import { trialStats, fmt, workoutTotals, fmtTrial } from '../../domain/calc.js';
 import { FACES } from '../../domain/recordTypes.js';
 import { formatSet } from '../setFormat.js';
 import { navigate, back } from '../../router.js';
@@ -18,6 +19,9 @@ function hhmm(iso) {
   const d = new Date(iso);
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
+
+/** 選んで書き出す:選択中かどうかと、選んだ記録(画面を描き直しても残す) */
+const pick = { on: false, ids: new Set(), extras: true };
 
 export async function renderHistory() {
   const rows = await listHistory();
@@ -42,23 +46,64 @@ export async function renderHistory() {
     groups[groups.length - 1].rows.push([r, metas[i]]);
   });
 
-  mount(h('div', {},
-    h('header', { class: 'topbar' }, h('div', { class: 'topbar-title' }, h('h1', { class: 'topbar-h' }, '履歴'))),
+  // 消えた記録は選択から外す
+  const keyOf = (r) => `${r.kind}:${r.item.id}`;
+  const exists = new Set(rows.map(keyOf));
+  for (const k of [...pick.ids]) if (!exists.has(k)) pick.ids.delete(k);
+
+  async function doExport() {
+    const ids = [...pick.ids];
+    const workoutIds = ids.filter((k) => k.startsWith('gym:')).map((k) => k.slice(4));
+    const poolSessionIds = ids.filter((k) => k.startsWith('pool:')).map((k) => k.slice(5));
+    const data = await exportSelected({ workoutIds, poolSessionIds, withDayExtras: pick.extras });
+    const ds = data.summary.dates;
+    const span = ds.length ? (ds[0] === ds[ds.length - 1] ? ds[0] : `${ds[0]}_${ds[ds.length - 1]}`).replace(/-/g, '') : localDate().replace(/-/g, '');
+    const ok = await saveJsonFile(data, `velocity-quest-records-${span}.json`);
+    if (ok) { pick.on = false; pick.ids.clear(); renderHistory(); }
+  }
+
+  const row = ([r, meta]) => {
+    const [y, m, d] = r.date.split('-').map(Number);
+    const wd = WEEK[new Date(y, m - 1, d).getDay()];
+    const gym = r.kind === 'gym';
+    const key = keyOf(r);
+    const body = [
+      h('div', { class: 'hist-date' }, h('span', { class: 'd' }, String(d)), h('span', { class: 'w' }, `${m}月 ${wd}`)),
+      h('div', { class: 'info' },
+        h('span', { class: 'name' }, h('span', { class: `kind ${r.kind}` }, gym ? 'ジム' : 'スイム'), gym ? (r.item.title || 'ジム') : 'スイム記録'),
+        h('span', { class: 'meta' }, meta)),
+    ];
+    if (pick.on) {
+      const on = pick.ids.has(key);
+      return h('button', {
+        type: 'button', class: `hist-row pick${on ? ' on' : ''}`, role: 'checkbox', 'aria-checked': String(on),
+        onclick: () => { if (on) pick.ids.delete(key); else pick.ids.add(key); renderHistory(); },
+      }, ...body, h('span', { class: 'pick-box', 'aria-hidden': 'true' }, on ? icon('check', 16) : null));
+    }
+    return h('a', { class: 'hist-row', href: gym ? `#/history/${r.item.id}` : `#/pool/${r.item.id}` },
+      ...body, h('span', { style: { color: 'var(--faint)', display: 'inline-flex', flexShrink: '0' } }, icon('forward', 18)));
+  };
+
+  mount(h('div', { class: pick.on ? 'picking' : '' },
+    h('header', { class: 'topbar' },
+      h('div', { class: 'topbar-title' }, h('h1', { class: 'topbar-h' }, pick.on ? '書き出す記録を選ぶ' : '履歴')),
+      rows.length ? h('button', {
+        class: 'btn btn-ghost', type: 'button',
+        onclick: () => { pick.on = !pick.on; if (!pick.on) pick.ids.clear(); renderHistory(); },
+      }, pick.on ? 'やめる' : '選んで書き出す') : null),
+    pick.on ? h('p', { class: 'hint', style: { padding: '0 var(--gutter) 8px' } },
+      '別のスマホで記録した日の分を、いつものスマホに足すための書き出しです。読み込む側では、設定の「読み込む」でこのファイルを選ぶと、その端末の記録は消さずに足されます。') : null,
     rows.length ? groups.map((g) => [
       h('h2', { class: 'month-head' }, g.key),
-      h('div', { class: 'stack' }, g.rows.map(([r, meta]) => {
-        const [y, m, d] = r.date.split('-').map(Number);
-        const wd = WEEK[new Date(y, m - 1, d).getDay()];
-        const gym = r.kind === 'gym';
-        return h('a', { class: 'hist-row', href: gym ? `#/history/${r.item.id}` : `#/pool/${r.item.id}` },
-          h('div', { class: 'hist-date' }, h('span', { class: 'd' }, String(d)), h('span', { class: 'w' }, `${m}月 ${wd}`)),
-          h('div', { class: 'info' },
-            h('span', { class: 'name' }, h('span', { class: `kind ${r.kind}` }, gym ? 'ジム' : 'スイム'), gym ? (r.item.title || 'ジム') : 'スイム記録'),
-            h('span', { class: 'meta' }, meta)),
-          h('span', { style: { color: 'var(--faint)', display: 'inline-flex', flexShrink: '0' } }, icon('forward', 18)));
-      })),
+      h('div', { class: 'stack' }, g.rows.map(row)),
     ]) : h('p', { class: 'empty' }, 'まだ記録がありません。ジムやスイムの記録を終えると、ここに日付ごとに並びます。'),
-  ), { showNav: true, navKey: 'history' });
+    pick.on ? h('div', { class: 'pick-bar' },
+      h('label', { class: 'pick-extra' },
+        h('input', { type: 'checkbox', checked: pick.extras, onchange: (e) => { pick.extras = e.target.checked; } }),
+        h('span', {}, '同じ日の体重と試技も入れる')),
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', disabled: !pick.ids.size, onclick: doExport },
+        pick.ids.size ? `${pick.ids.size}件を書き出す` : '記録を選んでください')) : null,
+  ), { showNav: !pick.on, navKey: 'history' });
 }
 
 export async function renderHistoryDetail({ params }) {
@@ -80,8 +125,8 @@ export async function renderHistoryDetail({ params }) {
       const unit = ex.unit || '';
       blocks.push(h('div', { class: 'card detail-ex' },
         h('h3', {}, ex.name),
-        h('p', { class: 'val num', style: { fontSize: '16px' } }, t.attempts.map((a) => (a.foul ? 'F' : fmt(a.value, 2))).join(' / ')),
-        h('p', { class: 'hint' }, `最高 ${fmt(st.best, 2)}${unit} · 平均 ${fmt(st.average, 2)}${unit}(有効${st.validCount}本)`)));
+        h('p', { class: 'val num', style: { fontSize: '16px' } }, t.attempts.map((a) => (a.foul ? 'F' : fmtTrial(a.value, unit))).join(' / ')),
+        h('p', { class: 'hint' }, `最高 ${fmtTrial(st.best, unit)}${unit} · 平均 ${fmtTrial(st.average, unit)}${unit}(有効${st.validCount}本)`)));
       continue;
     }
     const mine = sets.filter((x) => x.itemKey === it.key);
@@ -131,10 +176,10 @@ export async function renderHistoryDetail({ params }) {
         h('div', {}, h('span', { class: 'k' }, '時間'), h('span', { class: 'num' }, mins != null ? `${mins}分` : '—'),
           !w.backfill && w.endedAt ? h('span', { class: 'k' }, `${hhmm(w.startedAt)}–${hhmm(w.endedAt)}`) : null),
         h('div', {}, h('span', { class: 'k' }, '体重'), h('span', { class: 'num' }, w.bodyweight != null ? `${Number(w.bodyweight).toFixed(1)}kg` : '—'))),
-      h('p', { class: 'hint', style: { padding: '0 4px' } }, '総挙上重量は、本番のセットの「重さ×回数」の合計(片側は左右を足す。自重+加重は体重+加重)。'),
+      h('p', { class: 'hint', style: { padding: '0 4px' } }, '総挙上重量は、完了したセット(ウォームアップを含む)の「重さ×回数」の合計(片側は左右を足す。自重+加重は体重+加重)。総セット数・総レップ数もウォームアップを含みます。'),
       w.memo ? h('div', { class: 'card' }, h('p', { class: 'label' }, 'メモ'), h('p', {}, w.memo)) : null,
       blocks.length ? blocks : h('p', { class: 'empty' }, '完了したセットはありません。'),
-      h('button', { class: 'btn btn-ghost btn-block', onclick: saveAsRoutine }, 'この練習をルーティンとして保存'),
+      h('button', { class: 'btn btn-ghost btn-block', onclick: saveAsRoutine }, 'このトレーニングをルーティンとして保存'),
       h('button', { class: 'btn btn-danger btn-block', onclick: onDelete }, 'この練習を削除')),
   ), { showNav: false });
 }

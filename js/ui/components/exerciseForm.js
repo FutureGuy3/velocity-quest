@@ -59,7 +59,7 @@ export async function openExerciseForm({ exercise = null, defaults = {}, onSaved
           st.recordType === 'weight_reps'
             ? field('使うバー(重さの内訳に使う)', sel('ex-gear', 'gearId', [['', 'なし(合計だけ入れる)'], ...gear.map((g) => [g.id, `${g.name}(${g.barWeight}kg)`])]))
             : null,
-          st.recordType === 'trials' ? field('単位', sel('ex-unit', 'unit', [['cm', 'cm'], ['m', 'm']])) : null,
+          st.recordType === 'trials' ? field('単位', sel('ex-unit', 'unit', [['cm', 'cm'], ['m', 'm'], ['m/s', 'm/s(速度)']])) : null,
           h('div', { class: 'field' },
             h('span', { class: 'label' }, '水泳の目的(いくつでも)'),
             h('div', { class: 'chips', style: { padding: 0, flexWrap: 'wrap' } },

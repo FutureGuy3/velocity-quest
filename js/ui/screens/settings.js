@@ -1,5 +1,5 @@
 // 設定:テーマの色、器具(バーの重さ)、種目の管理、書き出し・読み込み、アプリの情報
-import { h, icon, mount, toast, applyAccent } from '../dom.js';
+import { h, icon, mount, toast, applyAccent, saveJsonFile, formatDateShort } from '../dom.js';
 import { openPicker } from '../components/picker.js';
 import { actionSheet } from '../components/overlay.js';
 import {
@@ -69,18 +69,7 @@ export async function renderSettings() {
 
   /* ---------- 書き出し・読み込み ---------- */
   async function doExport() {
-    const data = await exportAll();
-    const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
-    const name = `velocity-quest-${localDate().replace(/-/g, '')}.json`;
-    const file = new File([blob], name, { type: 'application/json' });
-    // スマホでは共有シートから保存できるようにする(使えなければダウンロード)
-    if (navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
-    }
-    const a = h('a', { href: URL.createObjectURL(blob), download: name });
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    toast('書き出しました');
+    await saveJsonFile(await exportAll(), `velocity-quest-${localDate().replace(/-/g, '')}.json`);
   }
 
   const fileInput = h('input', {
@@ -101,6 +90,14 @@ export async function renderSettings() {
           renderSettings();
         } catch (err) { toast(err.message); }
       };
+      // 選んだ記録のファイル:この端末のデータは消さずに、記録を足す
+      if (data?.scope === 'selected') {
+        const sm = data.summary || {};
+        const days = (sm.dates || []).map((d) => formatDateShort(d)).join('・');
+        if (!confirm(`選んだ記録のファイルです(ジム ${sm.workouts ?? 0}件・スイム ${sm.poolSessions ?? 0}件${days ? `、${days}` : ''})。\nこの端末の記録は消さずに足します。よろしいですか?`)) return;
+        run('merge');
+        return;
+      }
       actionSheet({
         title: '読み込み方を選んでください',
         actions: [
@@ -128,7 +125,7 @@ export async function renderSettings() {
       h('button', { class: 'btn btn-ghost btn-block', onclick: () => openPicker({ mode: 'manage', context: '登録・編集・非表示' }) }, '種目の管理(登録・編集・非表示)')),
 
     section('バックアップ',
-      h('p', { class: 'hint' }, 'すべての記録を1つのファイルに書き出します。機種変更や、もしものときに読み込んで戻せます。'),
+      h('p', { class: 'hint' }, 'すべての記録を1つのファイルに書き出します。機種変更や、もしものときに読み込んで戻せます。別のスマホで記録した日の分だけを足したいときは、履歴の「選んで書き出す」を使ってください。'),
       h('button', { class: 'btn btn-light btn-block', onclick: doExport }, '書き出す'),
       h('button', { class: 'btn btn-ghost btn-block', onclick: () => fileInput.click() }, '読み込む'),
       fileInput),
