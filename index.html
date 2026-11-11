@@ -30,20 +30,34 @@
 // 起動の見張り(モジュールではない普通のスクリプト)。
 // 古い部品と新しい部品が混ざってアプリが起動できないときでも、
 // 1) この場所のオフライン用のしくみ(Service Worker)の登録だけは行い、入れ替わったら読み込み直す
-// 2) 10秒たっても起動しなければ、更新用ページへのボタンを出す
+// 2) 10秒たっても起動しなければ、どこで止まったかと、更新用ページへのボタンを出す
 (function () {
+  window.__vqErrors = [];
+  var keep = function (m) { if (m && window.__vqErrors.length < 6) window.__vqErrors.push(String(m).slice(0, 200)); };
+  window.addEventListener('error', function (e) {
+    keep(e.message || ('読み込みに失敗: ' + ((e.target && (e.target.src || e.target.href)) || '')));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) { keep(e.reason && (e.reason.message || e.reason)); });
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     var had = !!navigator.serviceWorker.controller;
-    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(function () {});
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(function (e) { keep('しくみの登録: ' + e.message); });
     navigator.serviceWorker.addEventListener('controllerchange', function () {
       if (had && !window.__vqBooted && !window.__vqReloading) { window.__vqReloading = true; location.reload(); }
     });
   }
+  var esc = function (t) { return String(t).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); };
   setTimeout(function () {
     if (window.__vqBooted) return;
+    var ctrl = (navigator.serviceWorker && navigator.serviceWorker.controller) ? navigator.serviceWorker.controller.scriptURL.replace(location.origin, '') : 'なし';
     var app = document.getElementById('app');
-    app.innerHTML = '<div class="empty" style="display:flex;flex-direction:column;gap:12px">'
-      + '<p>アプリを起動できませんでした。古い部品が残っている可能性があります。</p>'
+    app.innerHTML = '<div class="empty" style="display:flex;flex-direction:column;gap:12px;text-align:left">'
+      + '<p>アプリを起動できませんでした。</p>'
+      + '<div class="card" style="font-size:12px;color:var(--text-2);word-break:break-all">'
+      + '<p><b>止まった段階</b>:' + esc(window.__vqStage || 'アプリの部品を読み込めていません') + '</p>'
+      + '<p><b>エラー</b>:' + esc(window.__vqErrors.join(' / ') || 'なし') + '</p>'
+      + '<p><b>版</b>:' + esc(self.VQ_VERSION || '?') + ' / <b>しくみ</b>:' + esc(ctrl) + '</p>'
+      + '</div>'
+      + '<p style="font-size:12px">この画面のスクリーンショットを送ってください。</p>'
       + '<a class="btn btn-primary btn-block" href="./update.html?v=' + Date.now() + '">更新用ページを開く(記録は消えません)</a>'
       + '<button class="btn btn-ghost btn-block" type="button" onclick="location.reload()">もう一度読み込む</button></div>';
   }, 10000);

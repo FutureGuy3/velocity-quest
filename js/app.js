@@ -59,14 +59,22 @@ function showFatal(err) {
     h('p', { class: 'muted' }, String(err?.message || err))), { showNav: false });
 }
 
+/** 起動の段階(index.html の見張りが、止まったときに表示する) */
+const stage = (s) => { window.__vqStage = s; };
+
 async function boot() {
+  stage('部品の読み込みは完了');
   buildNav();
   previewBanner();
   try {
+    stage('記録の保存場所を開いています');
     await initRepo();
+    stage('初期データを確かめています');
     await seedIfNeeded();
+    stage('設定を読み込んでいます');
     const settings = await getSettings();
     applyAccent(settings.accent);
+    stage('画面を出しています');
   } catch (err) {
     showFatal(err);
     return;

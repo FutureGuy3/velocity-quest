@@ -24,6 +24,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
 
 export async function initRepo() {
   db = openDb();
+  // 保存場所の形を新しくするとき、ほかのタブで古い版が開いていると待たされる。そのことを起動の見張りに知らせる
+  db.on('blocked', () => { window.__vqStage = '記録の保存場所の作り替えが、ほかのタブで開いている古い版に止められています。このアプリのタブをすべて閉じてから開き直してください'; });
   await db.open();
   deviceId = await getMeta('deviceId');
   if (!deviceId) {
@@ -31,7 +33,8 @@ export async function initRepo() {
     await setMeta('deviceId', deviceId);
   }
   // 端末の空き容量で消されにくくする(対応端末のみ)
-  try { await navigator.storage?.persist?.(); } catch { /* 何もしない */ }
+  // 返ってこないブラウザがあるので、待たずに先へ進む
+  try { navigator.storage?.persist?.()?.catch?.(() => {}); } catch { /* 何もしない */ }
   return { deviceId };
 }
 
