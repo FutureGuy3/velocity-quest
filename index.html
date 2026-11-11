@@ -57,6 +57,8 @@
       + '<p><b>エラー</b>:' + esc(window.__vqErrors.join(' / ') || 'なし') + '</p>'
       + '<p><b>版</b>:' + esc(self.VQ_VERSION || '?') + ' / <b>しくみ</b>:' + esc(ctrl) + '</p>'
       + '</div>'
+      + ((window.__vqStage || '').indexOf('記録の保存場所を開いて') === 0 && location.pathname.indexOf('/preview/') >= 0
+        ? '<p style="font-size:12px">テスト版の記録の保存場所が開けません。更新用ページの「テスト版の記録を消して作り直す」で直せます(本番の記録は消えません)。</p>' : '')
       + '<p style="font-size:12px">この画面のスクリーンショットを送ってください。</p>'
       + '<a class="btn btn-primary btn-block" href="./update.html?v=' + Date.now() + '">更新用ページを開く(記録は消えません)</a>'
       + '<button class="btn btn-ghost btn-block" type="button" onclick="location.reload()">もう一度読み込む</button></div>';
