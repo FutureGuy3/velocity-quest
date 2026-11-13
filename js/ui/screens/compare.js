@@ -7,7 +7,7 @@ import {
   listExerciseIdsWithRecords, getExerciseProgress, listTrials, listBodyweights, listGoals, localDate,
 } from '../../db/repo.js';
 import { fmt, formatSeconds, trialStats, daysBetween } from '../../domain/calc.js';
-import { toShape, toRate, changeOf, isSparse, conditionsText, SERIES_COLORS } from '../../domain/swim.js';
+import { toShape, toRate, changeOf, isSparse, conditionsText, SERIES_COLORS, eventKey, eventName, seriesShortName, normalizeConditions } from '../../domain/swim.js';
 import { fmtGoalValue } from '../goalFormat.js';
 
 export const MAX_LINES = 5;
@@ -25,7 +25,20 @@ const keyOf = (it) => `${it.type}:${it.id ?? ''}`;
 async function candidates() {
   const exMap = await getExerciseMap();
   const out = [];
-  for (const s of await listSeries()) out.push({ type: 'series', id: s.id, name: s.name, sub: conditionsText(s.conditions), group: '練習タイム' });
+  const series = await listSeries();
+  // 距離+泳法でまとめた候補(プール・計測などの違う系統を色分けしてまとめて出す)
+  const events = new Map();
+  for (const s of series) {
+    const k = eventKey(s.conditions);
+    if (!events.has(k)) events.set(k, { conditions: s.conditions, n: 0 });
+    events.get(k).n++;
+  }
+  const evOrder = [...events].sort(([, a], [, b]) => {
+    const x = normalizeConditions(a.conditions), y = normalizeConditions(b.conditions);
+    return x.distance - y.distance || x.stroke.localeCompare(y.stroke);
+  });
+  for (const [k, e] of evOrder) out.push({ type: 'event', id: k, name: eventName(e.conditions), sub: `${e.n}つの条件をまとめて(プール・計測などの違いは色分け)`, group: '練習タイム:距離・泳法でまとめる' });
+  for (const s of series) out.push({ type: 'series', id: s.id, name: s.name, sub: conditionsText(s.conditions), group: '練習タイム:条件ごと' });
   for (const id of await listExerciseIdsWithRecords()) {
     const ex = exMap.get(id);
     if (ex && ex.recordType !== 'trials') out.push({ type: 'exercise', id, name: ex.name, sub: scoreLabel(ex.recordType), group: '種目' });
@@ -48,6 +61,17 @@ function scoreUnit(rt) {
 /** 1つの項目の値を読む → { name, sub, unit, better, color, points:[{date,value}], step }
  * color は練習タイムの系統なら系統の色、それ以外は呼び出し側が渡す(重ねた系統と色がかぶらないように) */
 async function load(item, rep, color, exMap, seriesMap, goals) {
+  if (item.type === 'event') {
+    // 同じ距離・泳法のすべての系統。長水路は実線、短水路は破線、色は系統ごと
+    const list = [...seriesMap.values()].filter((s) => eventKey(s.conditions) === item.id);
+    if (!list.length) return null;
+    const title = eventName(list[0].conditions);
+    return Promise.all(list.map(async (s) => ({
+      name: seriesShortName(s.conditions), group: title, sub: '', unit: '秒', better: 'lower', color: s.color,
+      dash: normalizeConditions(s.conditions).pool === 'long' ? 'solid' : 'dash',
+      points: await getSeriesProgress(s.id, rep), subKey: s.id,
+    })));
+  }
   if (item.type === 'series') {
     const s = seriesMap.get(item.id);
     if (!s) return null;
@@ -94,7 +118,19 @@ export async function compareSection(rerender) {
   let fi = 0;
   const colors = ov.items.map((it) => (it.type === 'series' ? null : free[fi++ % free.length]));
   const loaded = (await Promise.all(ov.items.map((it, i) => load(it, ov.rep, colors[i], exMap, seriesMap, goals))))
-    .map((d, i) => (d ? { ...d, key: keyOf(ov.items[i]), item: ov.items[i] } : null)).filter(Boolean);
+    .flatMap((d, i) => {
+      if (!d) return [];
+      const base = keyOf(ov.items[i]);
+      return (Array.isArray(d) ? d : [d]).map((x) => ({ ...x, key: x.subKey ? `${base}/${x.subKey}` : base, item: ov.items[i] }));
+    });
+  // 同じ色の線が2本にならないように(系統の色がかぶったら、空いている色に替える)
+  const seen = new Set();
+  const palette = [...SERIES_COLORS, ...OTHER_COLORS];
+  for (const d of loaded) {
+    if (!d.color || d.color.startsWith('var(')) continue;
+    if (seen.has(d.color)) d.color = palette.find((c) => !seen.has(c)) || d.color;
+    seen.add(d.color);
+  }
 
   // 期間で絞り、表示方法に合わせて値を直す
   const inRange = (p) => !ov.range || daysBetween(p.date, today) <= ov.range;
@@ -143,26 +179,30 @@ export async function compareSection(rerender) {
   return h('section', { class: 'card compare-card', 'aria-label': '推移を重ねて見る' },
     h('div', { class: 'trial-head' },
       h('h2', {}, '推移を重ねて見る'),
-      h('span', { class: 'label' }, `${loaded.length} / ${MAX_LINES} 系統`)),
+      h('span', { class: 'label' }, `${ov.items.length} / ${MAX_LINES} 系統`)),
     seg(MODES.map((m) => [m.key, m.label]), ov.mode, (k) => save({ mode: k }), '表示方法'),
     h('p', { class: 'hint' }, MODES.find((m) => m.key === ov.mode).note),
     loaded.length ? overlayChart({ lines, axes, zeroLine: ov.mode === 'rate', label: `${loaded.map((d) => d.name).join('、')}の推移` })
       : h('p', { class: 'empty', style: { padding: '24px 8px' } }, '下の「系統を選ぶ」で、練習タイムの系統・種目・試技・体重・目標を最大5つまで選んでください。'),
     notes.length ? h('p', { class: 'hint' }, notes.join(' ')) : null,
     seg(RANGES, ov.range, (k) => save({ range: k }), '期間'),
-    loaded.some((d) => d.item.type === 'series')
+    loaded.some((d) => d.item.type === 'series' || d.item.type === 'event')
       ? h('div', { class: 'rep-row' }, h('span', { class: 'label' }, '1回の練習の代表値'),
         seg([['best', '最高'], ['average', '有効な本数の平均']], ov.rep, (k) => save({ rep: k }), '代表値'))
       : null,
     h('ul', { class: 'legend' },
-      legend.map(({ d, visible, change, pts }) => h('li', {},
+      legend.flatMap(({ d, visible, change, pts }, i) => [
+        // まとめた種目は、最初の行の上に種目名の見出し
+        d.group && legend[i - 1]?.d.group !== d.group ? h('li', { class: 'legend-group' }, h('span', {}, d.group), h('span', { class: 'label' }, '押すと表示・非表示(実線=長水路、破線=短水路)')) : null,
+        h('li', {},
         h('button', {
           type: 'button', class: 'legend-row', 'aria-pressed': String(visible),
           onclick: () => save({ hidden: visible ? [...ov.hidden, d.key] : ov.hidden.filter((k) => k !== d.key) }),
         },
+        h('span', { class: 'legend-check', 'aria-hidden': 'true' }, visible ? icon('check', 14, 3) : null),
         lineSwatch({ color: d.color, dash: d.dash, step: d.step, pointsOnly: !d.step && isSparse(pts) }),
         h('span', { class: 'info' }, h('span', { class: 'name' }, d.name), h('span', { class: 'sub' }, [d.sub, d.step ? '' : `${pts.length}回分`].filter(Boolean).join(' · '))),
-        h('span', { class: 'num delta' }, d.step ? '' : changeText(change, d)))))),
+        h('span', { class: 'num delta' }, d.step ? '' : changeText(change, d))))]).filter(Boolean)),
     h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: () => chooseItems(ov, save) }, `系統を選ぶ(最大${MAX_LINES})`),
     h('p', { class: 'caution' }, '同時に伸びていても因果とは限りません。期分けや技術練習の記録と合わせて判断してください。'));
 }

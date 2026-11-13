@@ -62,6 +62,42 @@ export function conditionsText(c) {
   ].join(' · ');
 }
 
+/* ---------- 種目(距離+泳法):条件の違う系統をまとめる単位 ---------- */
+
+/** 条件から種目のキー(例 "50|free")。プール・スタート・計測・器具は問わない */
+export function eventKey(c) {
+  const n = normalizeConditions(c);
+  return `${n.distance}|${n.stroke}`;
+}
+/** 種目の名前(例「50m 自由形」) */
+export function eventName(c) {
+  const n = normalizeConditions(c);
+  return `${n.distance}m ${optionLabel('stroke', n.stroke)}`;
+}
+/** 種目の中で系統を見分ける短い名前(例「長水路・飛び込み・大会公式」)。種目と同じ部分は省く */
+export function seriesShortName(c) {
+  const n = normalizeConditions(c);
+  return [
+    optionLabel('pool', n.pool), optionLabel('start', n.start), optionLabel('timing', n.timing),
+    n.gear === 'none' ? null : (n.gear === 'other' ? (n.gearOther || 'その他') : optionLabel('gear', n.gear)),
+  ].filter(Boolean).join('・');
+}
+
+/** 水泳タイムの目標:どの条件のタイムをベストに数えるか(既定は大会公式だけ。プールは any = どちらでも) */
+export const SWIM_GOAL_DEFAULT = { distance: 50, stroke: 'free', pool: 'long', timings: ['official'] };
+export function matchesSwimGoal(conditions, m) {
+  const n = normalizeConditions(conditions);
+  const g = { ...SWIM_GOAL_DEFAULT, ...(m || {}) };
+  return Number(n.distance) === Number(g.distance) && n.stroke === g.stroke
+    && (g.pool === 'any' || n.pool === g.pool)
+    && (g.timings || []).includes(n.timing);
+}
+/** 水泳タイムの目標の自動の名前(例「長水路 50m 自由形」) */
+export function swimGoalName(m) {
+  const g = { ...SWIM_GOAL_DEFAULT, ...(m || {}) };
+  return `${g.pool === 'any' ? '' : `${optionLabel('pool', g.pool)} `}${g.distance}m ${optionLabel('stroke', g.stroke)}`;
+}
+
 /** 系統の色(新しい系統に順に割り当てる) */
 export const SERIES_COLORS = ['#5AB4FF', '#F5C542', '#3DDC97', '#E58BF0', '#FF8A4C', '#A3E635', '#F87171', '#C4B5FD'];
 

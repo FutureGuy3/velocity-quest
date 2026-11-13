@@ -5,7 +5,7 @@ import { seriesSection } from './compare.js';
 import {
   startPoolSession, getActivePoolSession, getPoolSession, savePoolSession, finishPoolSession, deletePoolSession,
   addSwimTime, listSwimTimes, saveSwimTime, deleteSwimTime, getLastConditions, listSeries, seriesIdOf,
-  setPoolSessionDate, listRecentPoolSessions, localDate,
+  setPoolSessionDate, localDate,
 } from '../../db/repo.js';
 import { formatSeconds } from '../../domain/calc.js';
 import {
@@ -25,7 +25,6 @@ export async function startPool({ date = null } = {}) {
 
 export async function renderSwimTab() {
   const active = await getActivePoolSession();
-  const recent = await listRecentPoolSessions(8);
   const series = await seriesSection(renderSwimTab);
   const startPast = () => openOverlay({
     title: '日付を選んで記録',
@@ -47,14 +46,7 @@ export async function renderSwimTab() {
     h('div', { class: 'stack' },
       h('button', { class: 'btn btn-primary btn-block pool-start', onclick: () => startPool() }, active ? 'スイム記録を再開' : 'スイム記録を始める'),
       h('button', { class: 'btn btn-ghost btn-block', onclick: startPast }, '日付を選んで記録(過去の分)'),
-      recent.length ? recent.map(({ session: s, times }) => {
-        const n = new Set(times.map((t) => t.seriesId)).size;
-        return h('a', { class: 'goal-row', href: `#/pool/${s.id}` },
-          h('div', { class: 'info' },
-            h('span', { class: 'title' }, formatDateJa(s.date)),
-            h('span', { class: 'sub' }, `${times.length}本 · ${n}系統${s.memo ? ` · ${s.memo.slice(0, 20)}` : ''}`)),
-          h('span', { style: { color: 'var(--faint)', display: 'inline-flex' } }, icon('forward', 18)));
-      }) : null),
+      h('p', { class: 'hint', style: { padding: '0 4px' } }, '終えたスイム記録は、ジムと同じく「履歴」タブに日付ごとに並びます。')),
     h('div', { class: 'section-head' }, h('h2', {}, '練習タイムの系統')),
     series,
     h('div', { class: 'section-head' }, h('h2', {}, 'スイム練習・ルーティン')),

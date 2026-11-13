@@ -144,6 +144,14 @@ eq('合計:総種目数', tw.exercises, 3);
 eq('合計:総レップ数(ウォームアップを含め、片側は左右を足す)', tw.reps, 36);
 eq('系統:個人メドレーの名前', sw.seriesAutoName({ distance: 100, stroke: 'im', timing: 'hand' }), '短水路100m 個人メドレー・壁・自分(手動)');
 eq('系統:任意の距離', sw.seriesKey({ distance: 35 }).includes('35m'), true);
+eq('種目:長水路と短水路は同じ種目', sw.eventKey({ pool: 'long', distance: 50, stroke: 'free' }), sw.eventKey({ pool: 'short', distance: 50, stroke: 'free', timing: 'official' }));
+eq('種目:名前', sw.eventName({ distance: 50, stroke: 'free' }), '50m 自由形');
+eq('種目:系統の短い名前', sw.seriesShortName({ pool: 'long', distance: 50, stroke: 'free', start: 'dive', timing: 'official' }), '長水路・飛び込み・大会公式');
+eq('水泳の目標:大会公式は数える', sw.matchesSwimGoal({ pool: 'long', distance: 50, stroke: 'free', timing: 'official' }, { distance: 50, stroke: 'free', pool: 'long', timings: ['official'] }), true);
+eq('水泳の目標:手動は数えない(既定)', sw.matchesSwimGoal({ pool: 'long', distance: 50, stroke: 'free', timing: 'hand' }, { distance: 50, stroke: 'free', pool: 'long', timings: ['official'] }), false);
+eq('水泳の目標:プールが違えば数えない', sw.matchesSwimGoal({ pool: 'short', distance: 50, stroke: 'free', timing: 'official' }, { distance: 50, stroke: 'free', pool: 'long', timings: ['official'] }), false);
+eq('水泳の目標:どちらでも', sw.matchesSwimGoal({ pool: 'short', distance: 50, stroke: 'free', timing: 'official' }, { distance: 50, stroke: 'free', pool: 'any', timings: ['official'] }), true);
+eq('水泳の目標:名前', sw.swimGoalName({ distance: 50, stroke: 'free', pool: 'long' }), '長水路 50m 自由形');
 
 // 表示
 eq('時計:134秒 = 2:14', c.formatClock(134), '2:14');

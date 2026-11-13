@@ -4,7 +4,7 @@ import { openDb, SYNC_TABLES, IS_PREVIEW, migrateItem, migrateGoal } from './sch
 import { setEstimate1RM, trialStats, betterBest, bestSet, goalProgress } from '../domain/calc.js';
 import { DEFAULT_REST_SEC } from '../domain/recordTypes.js';
 import {
-  normalizeConditions, seriesKey, seriesAutoName, SERIES_COLORS, sessionValue, cutoffInfo, DEFAULT_CONDITIONS,
+  normalizeConditions, seriesKey, seriesAutoName, SERIES_COLORS, sessionValue, cutoffInfo, DEFAULT_CONDITIONS, matchesSwimGoal,
 } from '../domain/swim.js';
 
 export { IS_PREVIEW };
@@ -751,6 +751,8 @@ export async function getGoalHistory(goal) {
     for (const r of await getExerciseProgress(m.exerciseId)) bests.push({ date: r.date, value: r.score, source: 'record' });
   } else if (m.type === 'series' && m.seriesId) {
     for (const p of await getSeriesProgress(m.seriesId, 'best')) bests.push({ date: p.date, value: p.value, source: 'record' });
+  } else if (m.type === 'swim') {
+    for (const p of await getSwimGoalTimes(m)) bests.push({ date: p.date, value: p.value, source: 'record' });
   } else if (m.type === 'bodyweight') {
     bests = (await listBodyweights()).map((b) => ({ date: b.date, value: b.kg, source: 'record' }));
   }
@@ -803,6 +805,9 @@ export async function getGoalBest(goal) {
   }
   if (m.type === 'series' && m.seriesId) {
     for (const p of await getSeriesProgress(m.seriesId, 'best')) recorded = betterBest(recorded, { value: p.value, date: p.date, source: 'record' }, dir);
+  }
+  if (m.type === 'swim') {
+    for (const p of await getSwimGoalTimes(m)) recorded = betterBest(recorded, { value: p.value, date: p.date, source: 'record' }, dir);
   }
   if (m.type === 'e1rm' && m.exerciseId) {
     const ex = await getExercise(m.exerciseId);
@@ -921,6 +926,21 @@ export async function getSeriesProgress(seriesId, mode = 'best') {
     if (v != null) out.push({ date: list[0].date, value: v, sessionId, count: list.length });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * 水泳タイムの目標に数えるタイム(距離・泳法・プール・計測方法が合うもの。無効・目安超えは除く)
+ * 日ごとの最高を日付順に [{ date, value }]
+ */
+export async function getSwimGoalTimes(m) {
+  const byDate = new Map();
+  for (const t of await db.swimTimes.toArray()) {
+    if (!alive(t) || t.valid === false || t.flagged || !(t.seconds > 0)) continue;
+    if (!matchesSwimGoal(t.conditions, m)) continue;
+    const cur = byDate.get(t.date);
+    if (cur == null || t.seconds < cur) byDate.set(t.date, t.seconds);
+  }
+  return [...byDate].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** 系統ごとの本数とベスト(一覧用) */
