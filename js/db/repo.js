@@ -900,6 +900,16 @@ export async function listSwimTimes(sessionId) {
   return (await db.swimTimes.where('sessionId').equals(sessionId).toArray()).filter(alive).sort((a, b) => a.order - b.order);
 }
 export function saveSwimTime(t) { return put('swimTimes', t); }
+/** 入れたタイムの条件を直す(計測方法の選び間違いなど)。系統も条件に合わせて付け替える */
+export async function changeSwimTimeConditions(t, conditions) {
+  const c = normalizeConditions(conditions);
+  const s = await ensureSeries(c);
+  return put('swimTimes', { ...t, conditions: c, seriesId: s.id });
+}
+/** すべてのスイム記録のタイム(削除・無効を除く。目標の画面で、数えるタイムを見せるのに使う) */
+export async function listAllSwimTimes() {
+  return (await db.swimTimes.toArray()).filter((t) => alive(t) && t.valid !== false && t.seconds > 0);
+}
 export function deleteSwimTime(id) { return remove('swimTimes', id); }
 
 /** 前回記録したタイムの条件(なければ既定) */

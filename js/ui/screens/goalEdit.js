@@ -5,15 +5,15 @@ import { h, icon, mount, toast, formatDateShort } from '../dom.js';
 const formatDateJaShort = (d) => d.replace(/-/g, '/');
 import {
   getGoal, saveGoal, deleteGoal, listExercises, getExerciseMap, localDate,
-  getGoalBest, getGoalHistory, setNextGoal, saveGoalTargets, saveGoalBestLog, listSeries,
+  getGoalBest, getGoalHistory, setNextGoal, saveGoalTargets, saveGoalBestLog, listSeries, listAllSwimTimes,
 } from '../../db/repo.js';
-import { parseNumber, goalProgress } from '../../domain/calc.js';
+import { parseNumber, goalProgress, formatSeconds } from '../../domain/calc.js';
 import { openOverlay } from '../components/overlay.js';
 import { miniChart } from '../components/miniChart.js';
 import { BODY_PARTS } from '../../domain/recordTypes.js';
 import { GOAL_UNITS, fmtGoalValue } from '../goalFormat.js';
 import { back } from '../../router.js';
-import { CONDITIONS, SWIM_GOAL_DEFAULT, swimGoalName } from '../../domain/swim.js';
+import { CONDITIONS, SWIM_GOAL_DEFAULT, swimGoalName, matchesSwimGoal, normalizeConditions, optionLabel } from '../../domain/swim.js';
 
 const SWIM_GOAL_DISTANCES = [25, 50, 100, 200, 400, 800, 1500];
 
@@ -37,6 +37,7 @@ export async function renderGoalEdit({ params }) {
   }
   const exMap = await getExerciseMap();
   const seriesList = await listSeries();
+  const swimTimes = await listAllSwimTimes();
   const visible = await listExercises();
   const trialExercises = [...exMap.values()].filter((e) => e.recordType === 'trials' && (!e.hidden || e.id === existing?.metric?.exerciseId));
   const e1rmExercises = visible.filter((e) => E1RM_TYPES.includes(e.recordType));
@@ -196,6 +197,42 @@ export async function renderGoalEdit({ params }) {
         })))),
       h('p', { class: 'hint', style: { marginTop: '-10px' } }, 'スイム記録で、この距離・泳法・プールで選んだ計測方法のタイムからベストを出し、手で入れたベストと速い方を表示します。'),
     ];
+  }
+
+  /** 水泳タイムの目標:どのタイムを数え、どれを数えていないか(理由つき)と、ホームに出るベスト */
+  function swimCheck() {
+    const sw = st.swim;
+    const sameEvent = swimTimes.filter((t) => {
+      const n = normalizeConditions(t.conditions);
+      return Number(n.distance) === Number(sw.distance) && n.stroke === sw.stroke;
+    });
+    const counted = sameEvent.filter((t) => matchesSwimGoal(t.conditions, sw)).sort((a, b) => a.seconds - b.seconds);
+    const reasonOf = (t) => {
+      const n = normalizeConditions(t.conditions);
+      const r = [];
+      if (sw.pool !== 'any' && n.pool !== sw.pool) r.push(`プールが${optionLabel('pool', n.pool)}`);
+      if (!sw.timings.includes(n.timing)) r.push(`計測が${optionLabel('timing', n.timing)}`);
+      return r.join('、');
+    };
+    const notCounted = sameEvent.filter((t) => !matchesSwimGoal(t.conditions, sw)).sort((a, b) => b.date.localeCompare(a.date));
+    const manual = st.bestValue.trim() ? parseNumber(st.bestValue, { allowClock: true }) : null;
+    const rec = counted[0] || null;
+    let used = '—';
+    if (rec && (manual == null || rec.seconds <= manual)) used = `${formatSeconds(rec.seconds)}秒(スイム記録 ${formatDateShort(rec.date)})`;
+    else if (manual != null) used = `${formatSeconds(manual)}秒(手で入れたベスト)`;
+    const line = (t, extra) => h('div', { class: 'swim-check-row' },
+      h('span', {}, formatDateShort(t.date)), h('span', { class: 'num' }, `${formatSeconds(t.seconds)}秒`), h('span', { class: 'k' }, extra));
+    return h('div', { class: 'card swim-check' },
+      h('p', { class: 'label' }, 'ホームに出るベスト(保存後)'),
+      h('p', { class: 'num', style: { fontSize: '18px', fontWeight: 700 } }, used),
+      h('p', { class: 'label', style: { marginTop: '10px' } }, `ベストに数えているタイム(${counted.length}本)`),
+      counted.length ? counted.slice(0, 5).map((t) => line(t, `${optionLabel('pool', normalizeConditions(t.conditions).pool)}・${optionLabel('timing', normalizeConditions(t.conditions).timing)}`))
+        : h('p', { class: 'hint' }, 'まだありません。'),
+      notCounted.length ? [
+        h('p', { class: 'label', style: { marginTop: '10px' } }, `同じ距離・泳法で数えていないタイム(${notCounted.length}本)`),
+        notCounted.slice(0, 5).map((t) => line(t, reasonOf(t))),
+        h('p', { class: 'hint' }, '数えたいときは、上のプールや計測方法のボタンで足すか、スイム記録でそのタイムの条件を直してください。'),
+      ] : null);
   }
 
   function exerciseSelect(list) {
@@ -463,6 +500,10 @@ export async function renderGoalEdit({ params }) {
       st.metricType !== 'bodyweight' ? h('div', { class: 'row2' },
         field('ベスト(なくてもよい)', textInput('goal-best', 'bestValue', { ...numProps, placeholder: '—' })),
         field('その日付', textInput('goal-best-date', 'bestDate', { type: 'date', max: localDate() }))) : null,
+      st.metricType === 'swim' ? swimCheck() : null,
+      st.metricType === 'manual' && st.unit === '秒' && swimTimes.length
+        ? h('p', { class: 'hint', style: { marginTop: '-10px' } }, '「手入力」の目標は、スイム記録のタイムをベストに数えません。数えるには「何で測るか」を「水泳タイム」にしてください。')
+        : null,
       st.metricType === 'trial' || st.metricType === 'e1rm'
         ? h('p', { class: 'hint', style: { marginTop: '-10px' } }, '記録からもベストを出し、良い方をホームに表示します。')
         : st.metricType === 'bodyweight'

@@ -5,11 +5,11 @@ import { seriesSection } from './compare.js';
 import {
   startPoolSession, getActivePoolSession, getPoolSession, savePoolSession, finishPoolSession, deletePoolSession,
   addSwimTime, listSwimTimes, saveSwimTime, deleteSwimTime, getLastConditions, listSeries, seriesIdOf,
-  setPoolSessionDate, localDate,
+  setPoolSessionDate, localDate, changeSwimTimeConditions,
 } from '../../db/repo.js';
 import { formatSeconds } from '../../domain/calc.js';
 import {
-  CONDITIONS, normalizeConditions, seriesAutoName, cutoffInfo, conditionsText,
+  CONDITIONS, normalizeConditions, seriesAutoName, cutoffInfo, conditionsText, optionLabel,
 } from '../../domain/swim.js';
 import { navigate, back } from '../../router.js';
 
@@ -107,13 +107,33 @@ export async function renderPool({ params }) {
     draw(true);
   }
 
+  /** 入れたあとで、計測方法やプールを直す(選び間違い。直すと系統も付け替わる) */
+  function fixMenu(t, n) {
+    const c = normalizeConditions(t.conditions);
+    const fix = async (patch, msg) => {
+      await changeSwimTimeConditions(t, { ...c, ...patch });
+      times = await listSwimTimes(session.id);
+      toast(msg); draw(true);
+    };
+    actionSheet({
+      title: `${n}本目 ${formatSeconds(t.seconds)}:いまは ${optionLabel('pool', c.pool)}・${optionLabel('timing', c.timing)}`,
+      actions: [
+        ...CONDITIONS.find((x) => x.key === 'timing').options.filter(([v]) => v !== c.timing)
+          .map(([v, l]) => ({ label: `計測を「${l}」に直す`, onSelect: () => fix({ timing: v }, `計測を${l}に直しました`) })),
+        ...CONDITIONS.find((x) => x.key === 'pool').options.filter(([v]) => v !== c.pool)
+          .map(([v, l]) => ({ label: `プールを「${l}」に直す`, onSelect: () => fix({ pool: v }, `プールを${l}に直しました`) })),
+      ],
+    });
+  }
+
   function timeMenu(t, n) {
     actionSheet({
       title: `${n}本目 ${formatSeconds(t.seconds)}`,
       actions: [
         { label: t.valid === false ? '有効に戻す' : '無効にする(フライングなど。平均と判定から外す)', onSelect: async () => { await saveSwimTime({ ...t, valid: t.valid === false }); times = await listSwimTimes(session.id); draw(true); } },
+        { label: '計測方法・プールを直す', onSelect: () => fixMenu(t, n) },
         { label: 'この記録を削除', danger: true, onSelect: async () => { await deleteSwimTime(t.id); times = await listSwimTimes(session.id); draw(true); } },
-      ],
+      ].filter(Boolean),
     });
   }
 
