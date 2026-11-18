@@ -119,7 +119,7 @@ export async function renderGoalEdit({ params }) {
     if (st.metricType === 'swim' && !st.swim.timings.length) errors.push('ベストに数える計測方法を1つ以上選んでください');
     if (st.metricType === 'series' && !st.seriesId) errors.push('練習タイムの系統を選んでください(スイム記録でタイムを入れると系統ができます)');
     let manualBest = null;
-    if (st.metricType !== 'bodyweight' && st.bestValue.trim()) {
+    if (st.metricType === 'manual' && st.bestValue.trim()) {
       const v = parseNumber(st.bestValue, { allowClock: clock });
       if (v == null) errors.push('ベストを数字で入れてください');
       else manualBest = { value: v, date: st.bestDate || null };
@@ -195,7 +195,7 @@ export async function renderGoalEdit({ params }) {
           sw.timings = sw.timings.includes(v) ? sw.timings.filter((x) => x !== v) : [...sw.timings, v];
           render();
         })))),
-      h('p', { class: 'hint', style: { marginTop: '-10px' } }, 'スイム記録で、この距離・泳法・プールで選んだ計測方法のタイムからベストを出し、手で入れたベストと速い方を表示します。'),
+      h('p', { class: 'hint', style: { marginTop: '-10px' } }, 'スイム記録のうち、この距離・泳法・プールで選んだ計測方法のタイムからベストを出します。過去の大会の記録は、スイム記録で日付を選んで入れてください。'),
     ];
   }
 
@@ -215,15 +215,12 @@ export async function renderGoalEdit({ params }) {
       return r.join('、');
     };
     const notCounted = sameEvent.filter((t) => !matchesSwimGoal(t.conditions, sw)).sort((a, b) => b.date.localeCompare(a.date));
-    const manual = st.bestValue.trim() ? parseNumber(st.bestValue, { allowClock: true }) : null;
     const rec = counted[0] || null;
-    let used = '—';
-    if (rec && (manual == null || rec.seconds <= manual)) used = `${formatSeconds(rec.seconds)}秒(スイム記録 ${formatDateShort(rec.date)})`;
-    else if (manual != null) used = `${formatSeconds(manual)}秒(手で入れたベスト)`;
+    const used = rec ? `${formatSeconds(rec.seconds)}秒(${formatDateShort(rec.date)})` : '—(まだありません)';
     const line = (t, extra) => h('div', { class: 'swim-check-row' },
       h('span', {}, formatDateShort(t.date)), h('span', { class: 'num' }, `${formatSeconds(t.seconds)}秒`), h('span', { class: 'k' }, extra));
     return h('div', { class: 'card swim-check' },
-      h('p', { class: 'label' }, 'ホームに出るベスト(保存後)'),
+      h('p', { class: 'label' }, 'ホームに出るベスト'),
       h('p', { class: 'num', style: { fontSize: '18px', fontWeight: 700 } }, used),
       h('p', { class: 'label', style: { marginTop: '10px' } }, `ベストに数えているタイム(${counted.length}本)`),
       counted.length ? counted.slice(0, 5).map((t) => line(t, `${optionLabel('pool', normalizeConditions(t.conditions).pool)}・${optionLabel('timing', normalizeConditions(t.conditions).timing)}`))
@@ -412,7 +409,7 @@ export async function renderGoalEdit({ params }) {
       // いまの目標は期限まで(期限がなければ今日まで)線を引く
       from: t.setOn, to: t.endedOn || (t.deadline && t.deadline > today ? t.deadline : null), value: t.value, result: t.result,
     }));
-    const showBestLog = existing.metric?.type !== 'bodyweight';
+    const showBestLog = (existing.metric?.type || 'manual') === 'manual';
 
     historySection = h('div', { class: 'stack', style: { marginBottom: '6px' } },
       achieved ? h('div', { class: 'achieved-banner' },
@@ -473,7 +470,7 @@ export async function renderGoalEdit({ params }) {
           id: 'goal-series', class: 'select',
           onchange: (e) => { st.seriesId = e.target.value; render(); },
         }, seriesList.map((s) => h('option', { value: s.id, selected: s.id === st.seriesId }, s.name)))),
-        h('p', { class: 'hint', style: { marginTop: '-10px' } }, 'この系統の練習タイムからベストを出し、手で入れたベストと良い方を表示します。')]
+        h('p', { class: 'hint', style: { marginTop: '-10px' } }, 'この系統の練習タイムからベストを出します。')]
         : h('p', { class: 'hint' }, 'まだ系統がありません。スイム記録でタイムを入れると、条件ごとに系統ができます。')) : null,
       st.metricType === 'e1rm' ? [
         exerciseSelect(e1rmExercises),
@@ -497,15 +494,19 @@ export async function renderGoalEdit({ params }) {
 
       field('期限(なくてもよい)', textInput('goal-deadline', 'deadline', { type: 'date', min: localDate() })),
 
-      st.metricType !== 'bodyweight' ? h('div', { class: 'row2' },
+      // 手で入れるベストは「手入力」の目標だけ(ほかは記録から出す)
+      st.metricType === 'manual' ? h('div', { class: 'row2' },
         field('ベスト(なくてもよい)', textInput('goal-best', 'bestValue', { ...numProps, placeholder: '—' })),
         field('その日付', textInput('goal-best-date', 'bestDate', { type: 'date', max: localDate() }))) : null,
+      existing && existing.manualBest && st.metricType !== 'manual'
+        ? h('p', { class: 'hint warn', style: { marginTop: '-10px' } }, `「${METRICS.find((m) => m.key === st.metricType)?.label}」の目標は記録からだけベストを出します。保存すると、手で入れたベスト(${(existing.bestLog || []).length || 1}件)は消えます。`)
+        : null,
       st.metricType === 'swim' ? swimCheck() : null,
       st.metricType === 'manual' && st.unit === '秒' && swimTimes.length
         ? h('p', { class: 'hint', style: { marginTop: '-10px' } }, '「手入力」の目標は、スイム記録のタイムをベストに数えません。数えるには「何で測るか」を「水泳タイム」にしてください。')
         : null,
       st.metricType === 'trial' || st.metricType === 'e1rm'
-        ? h('p', { class: 'hint', style: { marginTop: '-10px' } }, '記録からもベストを出し、良い方をホームに表示します。')
+        ? h('p', { class: 'hint', style: { marginTop: '-10px' } }, '記録からベストを出してホームに表示します。アプリの外で測った記録も、試技やトレーニングとして日付を選んで入れてください。')
         : st.metricType === 'bodyweight'
           ? h('p', { class: 'hint', style: { marginTop: '-10px' } }, 'ホームには最新の体重を表示します。')
           : null,

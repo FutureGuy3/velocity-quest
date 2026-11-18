@@ -670,6 +670,8 @@ export async function saveGoal(g) {
     const cur = g.targets[g.targets.length - 1];
     g.targets = [...g.targets.slice(0, -1), { ...cur, value: g.target ?? null, deadline: g.deadline ?? null }];
   }
+  // 手で入れるベストは「手入力」の目標だけ。ほかの種類は記録からだけベストを出す(手入力の分は消す)
+  if ((g.metric?.type || 'manual') !== 'manual') { g.manualBest = null; g.bestLog = []; }
   const mb = g.manualBest;
   const pb = prev?.manualBest;
   if (mb && mb.value != null && (!pb || pb.value !== mb.value || pb.date !== mb.date)) {
@@ -740,7 +742,8 @@ export async function saveGoalBestLog(goalId, log) {
 export async function getGoalHistory(goal) {
   const g = migrateGoal(goal);
   const m = g.metric || { type: 'manual' };
-  let bests = (g.bestLog || []).map((x) => ({ date: x.date, value: x.value, source: 'manual' }));
+  const isManual = (g.metric?.type || 'manual') === 'manual';
+  let bests = isManual ? (g.bestLog || []).map((x) => ({ date: x.date, value: x.value, source: 'manual' })) : [];
   if (m.type === 'trial' && m.exerciseId) {
     for (const t of await listTrials(m.exerciseId)) {
       const st = trialStats(t.attempts);
@@ -787,7 +790,7 @@ export const GOAL_METRICS = {
  */
 export async function getGoalBest(goal) {
   const dir = goal.direction === 'lower' ? 'lower' : 'higher';
-  const manual = goal.manualBest && goal.manualBest.value != null
+  const manual = (goal.metric?.type || 'manual') === 'manual' && goal.manualBest && goal.manualBest.value != null
     ? { value: Number(goal.manualBest.value), date: goal.manualBest.date || null, source: 'manual' } : null;
   const m = goal.metric || { type: 'manual' };
   let recorded = null;
